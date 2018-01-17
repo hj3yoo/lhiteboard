@@ -1,21 +1,12 @@
-import os.path
 import cv2
-
 import copy
 from matplotlib import pyplot as plt
 import math
 import numpy as np
 from scipy.spatial import distance
-import sys
 
-class Coord:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
 
-    def __str__(self):
-        return '(%d, %d)' % (self.x, self.y)
-
+# Tuple of RGB values for special colours
 COLOR_WHITE = (255, 255, 255)
 COLOR_BLACK = (0, 0, 0)
 COLOR_BLUE = (255, 0, 0)
@@ -23,7 +14,29 @@ COLOR_GREEN = (0, 255, 0)
 COLOR_RED = (0, 0, 255)
 
 
+class Coord:
+    # Simple struct to store 2D coordinate
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def __str__(self):
+        return '(%d, %d)' % (self.x, self.y)
+
+
 def find_coordinate(img, blur_size=5, threshold=50, percentile=10, pyramid_height=7, centre_ratio=0.25):
+    """
+    Core CV algorithm to locate the intended coordinate of the pointer given the light reflection
+    :param img: source image to run the algorithm on
+    :param blur_size: size of the Gaussian blur mask
+    :param threshold: threshold value of pixel brightness to be truncated
+    :param percentile:
+    :param pyramid_height: Number of levels for image pyramid
+    :param centre_ratio: Size of the centre to be considered inside the detected ellipsoid
+    :return:
+    """
+
+    # Convert image to grayscale, apply blurring and thresholding
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     img_blur = cv2.GaussianBlur(img_gray, (blur_size, blur_size), 0)
     img_thresh = cv2.threshold(img_blur, threshold, 255, cv2.THRESH_TOZERO)[1]
@@ -152,6 +165,11 @@ def find_coordinate(img, blur_size=5, threshold=50, percentile=10, pyramid_heigh
 
 
 def find_centroid(img):
+    """
+    Find the centroid of the blob using brightness as a weight
+    :param img: source image with the blob
+    :return: x, y coordinate of the centroid
+    """
     count_pixel = np.sum(img)
     if count_pixel == 0:
         raise ValueError('no pixels exists to find centroid')
@@ -240,13 +258,23 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5):
 
 # Source: https://stackoverflow.com/questions/4978323/how-to-calculate-distance-between-two-rectangles-context-a-game-in-lua
 def rect_distance(rect_a, rect_b):
+    """
+    Computes the shortest distance between two rectangles
+    Each rectangles are represented by list of list - [[x0,y0],[x1,y1]]
+    :param rect_a: the primary rectangle
+    :param rect_b: the secondary rectangle to be compared
+    :return: distance in float
+    """
     a1, a2 = rect_a
     b1, b2 = rect_b
 
+    # Identify the position of rect_b with respect to rect_a
     left = b2[0] < a1[0]
     right = a2[0] < b1[0]
     bottom = b2[1] < a1[1]
     top = a2[1] < b1[1]
+
+    # Calculate the distance considering the positional relationship betwen two rectangles
     if top and left:
         return distance.euclidean((a1[0], a2[1]), (b2[0], b1[1]))
     elif left and bottom:
@@ -265,24 +293,3 @@ def rect_distance(rect_a, rect_b):
         return b1[1] - a2[1]
     else:             # rectangles intersect
         return 0.
-
-
-def main(argv):
-    img_dir = os.path.abspath(argv[1])
-    img_list = [x for x in os.listdir(img_dir) if x.endswith('.jpg') or x.endswith('.png')]
-    print(img_list)
-    for img_name in img_list:
-        print(img_name)
-        img = cv2.imread(os.path.join(img_dir, img_name))
-        sources = find_source(img)
-        for x, y, w, h in sources:
-            pt = find_coordinate(img[y:y + h, x:x + w])
-            cv2.circle(img, (x + pt[0], y + pt[1]), 10, COLOR_RED, 3)
-            cv2.rectangle(img, (x, y), (x + w, y + h), COLOR_GREEN, 3)
-        img = cv2.resize(img, (len(img[0]) // 2, len(img) // 2))
-        cv2.imshow('Result', img)
-        cv2.waitKey(0)
-    return
-
-if __name__ == '__main__':
-    main(sys.argv)
