@@ -5,7 +5,6 @@ import math
 import numpy as np
 from scipy.spatial import distance
 
-
 # Tuple of RGB values for special colours
 COLOR_WHITE = (255, 255, 255)
 COLOR_BLACK = (0, 0, 0)
@@ -26,15 +25,16 @@ class Coord:
 
 def find_coordinate(img, blur_size=5, threshold=50, percentile=10, pyramid_height=7, centre_ratio=0.25):
     """
-    Core CV algorithm to locate the intended coordinate of the pointer given the light reflection
+    Core CV algorithm to locate the intended coordinate of the point given the reflections on the surface
     :param img: source image to run the algorithm on
     :param blur_size: size of the Gaussian blur mask
     :param threshold: threshold value of pixel brightness to be truncated
     :param percentile:
     :param pyramid_height: Number of levels for image pyramid
     :param centre_ratio: Size of the centre to be considered inside the detected ellipsoid
-    :return:
+    :return: x, y coordinate of the point
     """
+    img = cv2.resize(img, (len(img[0]) * 4, len(img) * 4))
 
     # Convert image to grayscale, apply blurring and thresholding
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -42,9 +42,9 @@ def find_coordinate(img, blur_size=5, threshold=50, percentile=10, pyramid_heigh
     img_thresh = cv2.threshold(img_blur, threshold, 255, cv2.THRESH_TOZERO)[1]
     _, contours, _ = cv2.findContours(img_thresh, 1, 2)
 
-    #img_result = copy.copy(img)
+    img_result = copy.copy(img)
     img_process = cv2.cvtColor(img_thresh, cv2.COLOR_GRAY2RGB)
-    #img_ellipse = copy.copy(img_process)
+    img_ellipse = copy.copy(img_process)
 
     scale = percentile ** (1 / pyramid_height)
     brightness_pyramid = [calc_hist_percentile(img_thresh, threshold, 100 - pow(scale, x)) for x in range(1, pyramid_height + 1)]
@@ -52,10 +52,10 @@ def find_coordinate(img, blur_size=5, threshold=50, percentile=10, pyramid_heigh
     img_perc_pyramid_mask = [cv2.threshold(img_thresh, top_n, 255, cv2.THRESH_BINARY)[1] // 255 for top_n in brightness_pyramid]
     centroid = [find_centroid(img_perc_pyramid_mask[i]) for i in range(len(img_perc_pyramid)) if np.sum(img_perc_pyramid_mask[i]) != 0]
     #print(centroid)
-    #img_cont = np.sum([np.minimum((np.maximum(img_perc_pyramid[i], brightness_pyramid[i]) - brightness_pyramid[i]),
-    #                              256 // pyramid_height) for i in range(pyramid_height)], axis=0).astype(np.uint8)
-    #img_cont += img_thresh // (pyramid_height + 1)
-    #img_cont = cv2.cvtColor(img_cont, cv2.COLOR_GRAY2BGR)
+    img_cont = np.sum([np.minimum((np.maximum(img_perc_pyramid[i], brightness_pyramid[i]) - brightness_pyramid[i]),
+                                  256 // pyramid_height) for i in range(pyramid_height)], axis=0).astype(np.uint8)
+    img_cont += img_thresh // (pyramid_height + 1)
+    img_cont = cv2.cvtColor(img_cont, cv2.COLOR_GRAY2BGR)
 
     def get_key(item):
         return item[1][0] * item[1][1]
@@ -140,9 +140,8 @@ def find_coordinate(img, blur_size=5, threshold=50, percentile=10, pyramid_heigh
             #print(thresh_bright, pt)
         else:
             pt = centroid[0]
-    #img_result = cv2.circle(img_result, pt, len(img) // 50, COLOR_GREEN, len(img) // 100 + 1)
+    img_result = cv2.circle(img_result, pt, len(img) // 50, COLOR_GREEN, len(img) // 100 + 1)
     ret = pt
-    '''
     font = cv2.FONT_HERSHEY_TRIPLEX
     font_scale = len(img) / 200
     text_pt = (0, len(img_result[0]) - len(img[0]) // 10)
@@ -157,10 +156,9 @@ def find_coordinate(img, blur_size=5, threshold=50, percentile=10, pyramid_heigh
                          np.hstack((img_left_ellipse, img_right_ellipse, img_process))))
 
     print(ret)
-    img_out = cv2.resize(img_out, (min(len(img_out[0]), 800), min(len(img_out), int(800 * len(img_out) / len(img_out[0])))))
+    #img_out = cv2.resize(img_out, (min(len(img_out[0]), 800), min(len(img_out), int(800 * len(img_out) / len(img_out[0])))))
     cv2.imshow('Output', img_out)
     cv2.waitKey(0)
-    '''
     return ret
 
 
@@ -181,82 +179,56 @@ def find_centroid(img):
 
 
 def calc_hist_percentile(img, min_bright, percentile):
+    """
+    Find the brightness value of pixels for the given percentile
+    :param img: source image
+    :param min_bright: any pixels below this brightness value will be ignored
+    :param percentile: percentile value to decide the threshold
+    :return: threshold brightness value
+    """
+    # Create a histogram where each possible brightness value is represented by a bin
     hist = cv2.calcHist([img], [0], None, [256 - min_bright], [min_bright, 256])
     sample_size = sum(hist)
     thresh_num_pixel = sample_size * percentile / 100
     num_counted = 0
+    # Starting from the lowest brightness, count the number of pixels in each bin until the given percentile
     for idx in range(len(hist)):
         num_pixel = hist[idx][0]
         num_counted += num_pixel
         if num_counted >= thresh_num_pixel:
-            #print('%fth percentile: %d' % (percentile, idx + min_bright))
-            #plt.plot(hist)
-            #plt.show()
             return idx + min_bright - 1
     raise ValueError('Percentile not found')
 
 
 def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5):
+    """
+    Extract the important sections of images where light sources are found
+    :param img: source image
+    :param blur_size: size of Gaussian blur mask
+    :param threshold: threshold value of pixel brightness to be truncated
+    :param neighbour_ratio: percentage of spaces near the detected area to be considered
+    :return: x, y, width, height of the
+    """
     ret = []
     # Filtering - convert to grayscale, apply Gaussian blur, then remove noises with threshold
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     img_blur = cv2.GaussianBlur(img_gray, (blur_size, blur_size), 0)
     img_thresh = cv2.threshold(img_blur, threshold, 255, cv2.THRESH_TOZERO)[1]
-    '''
-    _, contours, _ = cv2.findContours(img_thresh, 2, 1)
-    for cont in contours:
-        hull = cv2.convexHull(cont, returnPoints=False)
-        defects = cv2.convexityDefects(cont, hull)
-        
-        if defects is not None:
-            print('New convex:')
-            print(defects)
-            for i in range(defects.shape[0]):
-                #(start_index, end_index, farthest_pt_index, fixpt_depth)
-                s, e, f, _ = defects[i, 0]
-                start = tuple(cont[s][0])
-                end = tuple(cont[e][0])
-                far = tuple(cont[f][0])
-                cv2.line(img_box, start, end, COLOR_GREEN, 2)
-                cv2.circle(img_box, far, 3, COLOR_RED, -1)
-                if i == 0:
-                    cv2.putText(img_box, '!', start, cv2.FONT_HERSHEY_TRIPLEX, 1, COLOR_WHITE)
-                print([start, end, far])
-    '''
 
     # Find all sources of IR light
     _, contours, _ = cv2.findContours(img_thresh, 1, 2)
-    img_box = cv2.cvtColor(img_thresh, cv2.COLOR_GRAY2RGB)
     boxes = [cv2.boundingRect(cont) for cont in contours]
     for x, y, w, h in boxes:
-        offset = max(w, h) * neighbour_ratio
-        pt1 = (int(x - offset), int(y - offset))
-        pt2 = (int(x + w + offset), int(y + h + offset))
-        img_box = cv2.rectangle(img_box, pt1, pt2, COLOR_WHITE,-1)
-        #img_box = cv2.rectangle(img_box, (x, y), (x + w, y + h), COLOR_RED, 3)
-
-    _, contours, _ = cv2.findContours(cv2.cvtColor(img_box, cv2.COLOR_BGR2GRAY), 1, 2)
-    boxes = [cv2.boundingRect(cont) for cont in contours]
-    img_box = cv2.cvtColor(img_thresh, cv2.COLOR_GRAY2RGB)
-    for x, y, w, h in boxes:
-        img_box = cv2.rectangle(img_box, (x, y), (x + w, y + h), COLOR_GREEN, 3)
-        ret += [[x, y, w, h]]
-        #cv2.imshow('source', img[y:y + h, x:x + w])
+        x0 = int(x - w * neighbour_ratio / 2)
+        x1 = int(x + w * (1 + neighbour_ratio / 2))
+        y0 = int(y - h * neighbour_ratio / 2)
+        y1 = int(y + h * (1 + neighbour_ratio / 2))
+        ret.append(((x0, y0), (x1, y1)))
+        #cv2.imshow('source', img[y0:y1, x0:x1])
         #cv2.waitKey(0)
-
-    #font = cv2.FONT_HERSHEY_TRIPLEX
-    #cv2.putText(img, 'Original', (0, len(img) - 10), font, 1, COLOR_WHITE)
-    #cv2.putText(img_box, 'Detection Area', (0, len(img_box) - 10), font, 1, COLOR_WHITE)
-
-    #img_out = np.hstack((img, img_box))
-    #img_out = img_box
-    #img_out = cv2.resize(img_out, (len(img_out[0]) // 2, len(img_out) // 2))
-    #cv2.imshow('Result', img_out)
-    #cv2.waitKey(0)
     return ret
 
 
-# Source: https://stackoverflow.com/questions/4978323/how-to-calculate-distance-between-two-rectangles-context-a-game-in-lua
 def rect_distance(rect_a, rect_b):
     """
     Computes the shortest distance between two rectangles

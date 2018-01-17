@@ -1,6 +1,7 @@
 from src.detect import *
 import argparse
-
+import os
+import sys
 
 def detection_test(arg_dict):
     """
@@ -20,11 +21,13 @@ def detection_test(arg_dict):
         img = cv2.imread(os.path.join(img_dir, img_name))
         sources = find_source(img)
         # Each sections are represented by a rectangle
-        for x, y, w, h in sources:
-            pt = find_coordinate(img[y:y + h, x:x + w])
+        for pt0, pt1 in sources:
+            x0, y0 = pt0
+            x1, y1 = pt1
+            det_pt = find_coordinate(img[y0:y1, x0:x1])
             # Mark the detected point for each section
-            cv2.circle(img, (x + pt[0], y + pt[1]), arg_dict['pt_radius'], COLOR_RED, 3)
-            cv2.rectangle(img, (x, y), (x + w, y + h), COLOR_GREEN, 3)
+            cv2.circle(img, (x0 + det_pt[0], y0 + det_pt[1]), arg_dict['pt_radius'], COLOR_RED, 3)
+            cv2.rectangle(img, pt0, pt1, COLOR_GREEN, 3)
         # Display the result to the user, and pause until user proceeds
         img = cv2.resize(img, (len(img[0]) // 4, len(img) // 4))
         cv2.imshow('Result', img)
