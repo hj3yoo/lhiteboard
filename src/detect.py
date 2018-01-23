@@ -57,12 +57,24 @@ def find_coordinate(img, blur_size=5, threshold=50, percentile=10, pyramid_heigh
     img_cont += img_thresh // (pyramid_height + 1)
     img_cont = cv2.cvtColor(img_cont, cv2.COLOR_GRAY2BGR)
 
+    # The reflection of a light source over a flat surface can be estimated by an ellipsoidal shape
+    # Estimate ellipses using the detected contours from thresholded image
+    ellipses = [cv2.fitEllipse(cont) for cont in contours if len(cont) >= 5]
+
+    # Sorted by the size of the ellipses in descending order
     def get_key(item):
         return item[1][0] * item[1][1]
-    ellipses = sorted([cv2.fitEllipse(cont) for cont in contours if len(cont) >= 5], key=get_key, reverse=True)
+    ellipses = sorted(ellipses, key=get_key, reverse=True)
     if len(ellipses) == 0:
         print('No ellipse found')
         return -1, -1
+
+    '''
+    split the largest ellipse into three sections:
+    centre: a small ellipse located at the centre
+    left: left half of the ellipse
+    right: right half of the ellipse
+    '''
     ellipse = ellipses[0]
     small_ellipse = (ellipse[0], (ellipse[1][0] * centre_ratio, ellipse[1][1] * centre_ratio), ellipse[2])
 
