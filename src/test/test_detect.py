@@ -2,6 +2,7 @@ from src.detect import *
 import argparse
 import os
 import sys
+import math
 
 def detection_test(arg_dict):
     """
@@ -19,18 +20,30 @@ def detection_test(arg_dict):
     for img_name in img_list:
         print(img_name + ':')
         img = cv2.imread(os.path.join(img_dir, img_name))
+        img_show = copy.copy(img)
         sources = find_source(img)
+        new_x0 = math.inf
+        new_y0 = math.inf
+        new_x1 = -1
+        new_y1 = -1
         # Each sections are represented by a rectangle
         for pt0, pt1 in sources:
             x0, y0 = pt0
             x1, y1 = pt1
             det_pt = find_coordinate(img[y0:y1, x0:x1])
-            # Mark the detected point for each section
-            cv2.circle(img, (x0 + det_pt[0], y0 + det_pt[1]), arg_dict['pt_radius'], COLOR_RED, 3)
-            cv2.rectangle(img, pt0, pt1, COLOR_GREEN, 3)
+            if det_pt[0] != -1 and det_pt[1] != -1:
+                # Mark the detected point for each section
+                img_show = cv2.circle(img_show, (x0 + det_pt[0], y0 + det_pt[1]), arg_dict['pt_radius'], COLOR_RED, 3)
+            img_show = cv2.rectangle(img_show, pt0, pt1, COLOR_GREEN, 3)
+            new_x0 = min(new_x0, x0)
+            new_y0 = min(new_y0, y0)
+            new_x1 = max(new_x1, x1)
+            new_y1 = max(new_y1, y1)
+
         # Display the result to the user, and pause until user proceeds
-        img = cv2.resize(img, (len(img[0]) // 4, len(img) // 4))
-        cv2.imshow('Result', img)
+        #cv2.imshow('Result zoomed', img_show[new_y0-10:new_y1+10, new_x0-10:new_x1+10])
+        img_show = cv2.resize(img_show, (len(img[0]) // 4, len(img) // 4))
+        cv2.imshow('Result', img_show)
         if not arg_dict['animate']:
             cv2.waitKey(0)
     return
@@ -51,6 +64,7 @@ if __name__ == '__main__':
             print('The specified directory is empty')
             sys.exit()
     except FileNotFoundError:
+        print(in_dir)
         print('The specified directory does not exist')
         sys.exit()
     detection_test(dict_args)
