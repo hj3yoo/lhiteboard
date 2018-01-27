@@ -3,7 +3,6 @@ import copy
 from matplotlib import pyplot as plt
 import math
 import numpy as np
-from scipy.spatial import distance
 
 # Tuple of RGB values for special colours
 COLOR_WHITE = (255, 255, 255)
@@ -100,3 +99,4 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5):
     '''
     return ret
     pass
+

@@ -1,5 +1,5 @@
 CC 	= g++
-CFLAGS	= -I./include
+CFLAGS	= -I./include -O2
 LDFLAGS = -lraspicam
 
 raspicam_test: src/raspicam_test.cpp
