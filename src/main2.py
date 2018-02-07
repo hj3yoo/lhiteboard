@@ -9,6 +9,25 @@ import detect
 
 NUM_THREADS = 8 
 
+result_lock = threading.Lock()
+result_table = {}
+
+class Consumer(threading.Thread):
+    def __init__(self):
+        super(Consumer, self).__init__()
+        self.terminated = False
+        self.i = 0
+        self.start()
+
+    def run(self):
+        print("Consumer running still")
+        while not self.terminated:
+            with result_lock:
+                get = result_table.get(self.i)
+                if get is not None:
+                    print("Consumed coordinate {0}: {1}".format(self.i, get))
+                    self.i += 1
+                    
 class ImageProcessor(threading.Thread):
     def __init__(self, owner):
         super(ImageProcessor, self).__init__()
@@ -27,7 +46,6 @@ class ImageProcessor(threading.Thread):
                     self.stream.seek(0)
                     # Read the image and do some processing on it
                     #Image.open(self.stream)
-                    print("Another one")
                     with self.owner.lock:
                         idx = self.owner.frames_processed
                         self.owner.frames_processed += 1
@@ -37,7 +55,9 @@ class ImageProcessor(threading.Thread):
                     # Don't enable the following for now... it will get the process KILLED
                     # Probably due to using too many resources...somewhere...maybe
                     coord = detect.find_coordinate(image)
-                    print("Found coordinate for frame {0}: {1}".format(idx, coord))
+                    #print("Found coordinate for frame {0}: {1}".format(idx, coord))
+                    with result_lock:
+                        result_table[idx] = coord
 
                     #...
                     #...
@@ -57,6 +77,7 @@ class ProcessOutput(object):
     def __init__(self):
         self.done = False
         self.frames_processed = 0
+        self.frames_dropped = 0
         # Construct a pool of 4 image processors along with a lock
         # to control access between threads
         self.lock = threading.Lock()
@@ -76,6 +97,7 @@ class ProcessOutput(object):
                     # No processor's available, we'll have to skip
                     # this frame; you may want to print a warning
                     # here to see whether you hit this case
+                    self.frames_dropped += 1
                     print("WARNING: dropped frame")
                     self.processor = None
         if self.processor:
@@ -101,23 +123,31 @@ class ProcessOutput(object):
 
 # sensor_mode 6 boosts the FPS
 # read more about the camera modes here: https://picamera.readthedocs.io/en/release-1.13/fov.html#camera-modes
-with picamera.PiCamera(sensor_mode=6) as camera:
+with picamera.PiCamera(sensor_mode=7) as camera:
     #camera.start_preview()
     time.sleep(2)
     output = ProcessOutput()
+    consumer = Consumer()
     time_begin = time.time()
 
     import signal, sys
     def signal_handler(signal, frame):
         time_now = time.time()
         fps = output.frames_processed / (time_now - time_begin)
-        print("Average FPS thus far: {0}".format(fps)) 
+        dropped_percent = output.frames_dropped / (output.frames_dropped
+            + output.frames_processed) * 100.0
+        print("Average FPS thus far: {0}".format(fps))  
+        print("Avg. % of frames dropped: {0}".format(dropped_percent))
     signal.signal(signal.SIGQUIT, signal_handler)
 
     camera.start_recording(output, format='mjpeg')
     while not output.done:
         camera.wait_recording(1)
     camera.stop_recording()
+
+    consumer.terminated = True
+    consumer.join()
+    
     print("Quitting...")
 
 
