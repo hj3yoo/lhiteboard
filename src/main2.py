@@ -4,6 +4,8 @@ import threading
 import picamera
 import cv2
 import numpy as np
+import sys
+from io import BytesIO
 
 import detect
 
@@ -50,7 +52,8 @@ class ImageProcessor(threading.Thread):
                         idx = self.owner.frames_processed
                         self.owner.frames_processed += 1
 
-                    image = cv2.imdecode(np.fromstring(self.stream.getvalue(), dtype=np.uint8), cv2.IMREAD_COLOR)
+                    image = cv2.imdecode(np.fromstring(self.stream.getvalue(), 
+                        dtype=np.uint8), cv2.IMREAD_COLOR)
 
                     # Don't enable the following for now... it will get the process KILLED
                     # Probably due to using too many resources...somewhere...maybe
@@ -123,9 +126,29 @@ class ProcessOutput(object):
 
 # sensor_mode 6 boosts the FPS
 # read more about the camera modes here: https://picamera.readthedocs.io/en/release-1.13/fov.html#camera-modes
-with picamera.PiCamera(sensor_mode=7) as camera:
-    #camera.start_preview()
+with picamera.PiCamera(sensor_mode=5) as camera:
+    #camera.start_preview() #This outputs the video full-screen in real time
     time.sleep(2)
+
+    # Calibration - let the user grab 4 coordinates 
+    # U press keyboard to take pic
+    calib_coords = []
+    dirs = ["NO LIGHTS (ENVIRONMENTAL)", "TOP RIGHT", "TOP LEFT", "BOT RIGHT", "BOT LEFT"]
+    for i in range(5):
+        print("Taking {0} calibration picture. Press keyboard when ready.".format(dirs[i]))
+        camera.start_preview()
+        sys.stdin.readline()
+        stream = BytesIO() 
+        camera.capture(stream, format='jpeg')
+        stream.seek(0)
+        image = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 
+            cv2.IMREAD_COLOR)
+        coord = detect.find_coordinate(image)
+        calib_coords.append(coord)
+        camera.stop_preview()
+    print("Calibration coordinates: {0}".format(calib_coords))
+
+    # actually start our threads now    
     output = ProcessOutput()
     consumer = Consumer()
     time_begin = time.time()
