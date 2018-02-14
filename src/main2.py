@@ -103,6 +103,11 @@ class ImageProcessor(threading.Thread):
                     else:
                         coord = (-1, -1)
                     #print("Found coordinate for frame {0}: {1}".format(idx, coord))
+
+                    if coord != (-1, -1):
+                        with self.owner.lock:
+                            self.owner.frames_detected += 1
+
                     with result_lock:
                         result_table[idx] = coord
 
@@ -125,6 +130,7 @@ class ProcessOutput(object):
         self.done = False
         self.frames_processed = 0
         self.frames_dropped = 0
+        self.frames_detected = 0
         # Construct a pool of 4 image processors along with a lock
         # to control access between threads
         self.lock = threading.Lock()
@@ -145,7 +151,8 @@ class ProcessOutput(object):
                     # this frame; you may want to print a warning
                     # here to see whether you hit this case
                     self.frames_dropped += 1
-                    print("WARNING: dropped frame")
+                    #print("WARNING: dropped frame")
+                    #print()
                     self.processor = None
         if self.processor:
             self.processor.stream.write(buf)
@@ -215,8 +222,10 @@ with picamera.PiCamera(sensor_mode=5) as camera:
         fps = output.frames_processed / (time_now - time_begin)
         dropped_percent = output.frames_dropped / (output.frames_dropped
             + output.frames_processed) * 100.0
+        detected_percent = output.frames_detected / output.frames_processed * 100.0;
         print("Average FPS thus far: {0}".format(fps))  
         print("Avg. % of frames dropped: {0}".format(dropped_percent))
+        print("Detected percent: {0}".format(detected_percent))
     signal.signal(signal.SIGQUIT, signal_handler)
 
     camera.start_recording(output, format='mjpeg')
