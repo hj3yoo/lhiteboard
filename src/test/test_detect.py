@@ -23,11 +23,11 @@ def detection_test(arg_dict):
         img = cv2.imread(os.path.join(img_dir, img_name))
         if arg_dict['debug']:
             print(img_name + ':')
-            img_show = copy.copy(img)
-            new_x0 = math.inf
-            new_y0 = math.inf
-            new_x1 = -1
-            new_y1 = -1
+            #img_show = copy.copy(img)
+            #new_x0 = math.inf
+            #new_y0 = math.inf
+            #new_x1 = -1
+            #new_y1 = -1
             t_start = datetime.now()
         if arg_dict['debug']:
             sources, t_source = find_source(img, debug=True)
@@ -44,12 +44,12 @@ def detection_test(arg_dict):
             if arg_dict['debug']:
                 if det_pt[0] != -1 and det_pt[1] != -1:
                     # Mark the detected point for each section
-                    img_show = cv2.circle(img_show, (x0 + det_pt[0], y0 + det_pt[1]), arg_dict['pt_radius'], COLOR_RED, 3)
-                img_show = cv2.rectangle(img_show, pt0, pt1, COLOR_GREEN, 3)
-                new_x0 = min(new_x0, x0)
-                new_y0 = min(new_y0, y0)
-                new_x1 = max(new_x1, x1)
-                new_y1 = max(new_y1, y1)
+                    #img_show = cv2.circle(img_show, (x0 + det_pt[0], y0 + det_pt[1]), arg_dict['pt_radius'], COLOR_RED, 3)
+                #img_show = cv2.rectangle(img_show, pt0, pt1, COLOR_GREEN, 3)
+                #new_x0 = min(new_x0, x0)
+                #new_y0 = min(new_y0, y0)
+                #new_x1 = max(new_x1, x1)
+                #new_y1 = max(new_y1, y1)
 
         if arg_dict['debug']:
             t_end = datetime.now()
@@ -57,9 +57,9 @@ def detection_test(arg_dict):
             print("%.5f, %.5f, %.5f" % (t_delta.total_seconds(), t_source, t_coord))
 
             # Display the result to the user, and pause until user proceeds
-            cv2.imshow('Result zoomed', img_show[max(new_y0-10, 0):new_y1+10, max(new_x0-10, 0):new_x1+10])
-            img_show = cv2.resize(img_show, (len(img[0]) // 4, len(img) // 4))
-            cv2.imshow('Result', img_show)
+            #cv2.imshow('Result zoomed', img_show[max(new_y0-10, 0):new_y1+10, max(new_x0-10, 0):new_x1+10])
+            #img_show = cv2.resize(img_show, (len(img[0]) // 4, len(img) // 4))
+            #cv2.imshow('Result', img_show)
             if not arg_dict['animate']:
                 cv2.waitKey(0)
     return
