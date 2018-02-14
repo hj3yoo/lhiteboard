@@ -14,6 +14,41 @@ NUM_THREADS = 8
 result_lock = threading.Lock()
 result_table = {}
 
+#calib_coords gets populated during calibration
+#stored in this order: L0(x=0,y=0),L1(0,1), L2(1,1), L3(1,0)
+#algorithm from: https://math.stackexchange.com/questions/13404/mapping-irregular-quadrilateral-to-a-rectangle/1361366#1361366
+calib_coords = []
+def to_normalized_screen_coords(raw_coord):
+    Qx0 = calib_coords[0][0]
+    Qx1 = calib_coords[1][0]
+    Qx2 = calib_coords[2][0]
+    Qx3 = calib_coords[3][0]
+
+    Qy0 = calib_coords[0][1]
+    Qy1 = calib_coords[1][1]
+    Qy2 = calib_coords[2][1]
+    Qy3 = calib_coords[3][1]
+
+    x = raw_coord[0]
+    y = raw_coord[1]
+
+    ax = (x - Qx0) + (Qx1 - Qx0) * (y - Qy0) / (Qy0 - Qy1)
+    a3x = (Qx3 - Qx0) + (Qx1 - Qx0) * (Qy3 - Qy0) / (Qy0 - Qy1)
+    a2x = (Qx2 - Qx0) + (Qx1 - Qx0) * (Qy2 - Qy0) / (Qy0 - Qy1)
+    ay = (y - Qy0) + (Qy3 - Qy0) * (x - Qx0) / (Qx0 - Qx3)
+    a1y = (Qy1 - Qy0) + (Qy3 - Qy0) * (Qx1 - Qx0) / (Qx0 - Qx3)
+    a2y = (Qy2 - Qy0) + (Qy3 - Qy0) * (Qx2 - Qx0) / (Qx0 - Qx3)
+    bx = x * y - Qx0 * Qy0 + (Qx1 * Qy1 - Qx0 * Qy0) * (y - Qy0) / (Qy0 - Qy1)
+    b3x = Qx3 * Qy3 - Qx0 * Qy0 + (Qx1 * Qy1 - Qx0 * Qy0) * (Qy3 - Qy0) / (Qy0 - Qy1)
+    b2x = Qx2 * Qy2 - Qx0 * Qy0 + (Qx1 * Qy1 - Qx0 * Qy0) * (Qy2 - Qy0) / (Qy0 - Qy1)
+    by = x * y - Qx0 * Qy0 + (Qx3 * Qy3 - Qx0 * Qy0) * (x - Qx0) / (Qx0 - Qx3)
+    b1y = Qx1 * Qy1 - Qx0 * Qy0 + (Qx3 * Qy3 - Qx0 * Qy0) * (Qx1 - Qx0) / (Qx0 - Qx3)
+    b2y = Qx2 * Qy2 - Qx0 * Qy0 + (Qx3 * Qy3 - Qx0 * Qy0) * (Qx2 - Qx0) / (Qx0 - Qx3)
+
+    out_x = (ax / a3x) + (1 - a2x / a3x) * (bx - b3x * ax / a3x) / (b2x - b3x * a2x / a3x)
+    out_y  = (ay / a1y) + (1 - a2y / a1y) * (by - b1y * ay / a1y) / (b2y - b1y * a2y / a1y)
+    return (out_x, out_y)
+
 class Consumer(threading.Thread):
     def __init__(self):
         super(Consumer, self).__init__()
@@ -28,6 +63,8 @@ class Consumer(threading.Thread):
                 get = result_table.get(self.i)
                 if get is not None:
                     print("Consumed coordinate {0}: {1}".format(self.i, get))
+                    if get != (-1, -1):
+                        print("---> NSC: {0}".format(to_normalized_screen_coords(get)))
                     self.i += 1
                     
 class ImageProcessor(threading.Thread):
@@ -57,9 +94,12 @@ class ImageProcessor(threading.Thread):
 
                     # Don't enable the following for now... it will get the process KILLED
                     # Probably due to using too many resources...somewhere...maybe
-                    sources = detect.find_source(image)
+                    sources, _ = detect.find_source(image)
+
                     if len(sources) != 0:
-                        coord, _ = detect.find_coordinate(sources[0])
+                        (x0, y0), (x1, y1) = sources[0]
+                        coord, _ = detect.find_coordinate(image[y0:y1, x0:x1])
+                        coord = (coord[0] + x0, coord[1] + y0)
                     else:
                         coord = (-1, -1)
                     #print("Found coordinate for frame {0}: {1}".format(idx, coord))
@@ -139,9 +179,8 @@ with picamera.PiCamera(sensor_mode=5) as camera:
 
     # Calibration - let the user grab 4 coordinates 
     # U press keyboard to take pic
-    calib_coords = []
-    dirs = ["NO LIGHTS (ENVIRONMENTAL)", "TOP RIGHT", "TOP LEFT", "BOT RIGHT", "BOT LEFT"]
-    for i in range(5):
+    dirs = ["TOP LEFT", "TOP RIGHT", "BOT RIGHT", "BOT LEFT"]
+    for i in range(len(dirs)):
         print("Taking {0} calibration picture. Press keyboard when ready.".format(dirs[i]))
         camera.start_preview()
         sys.stdin.readline()
@@ -150,11 +189,17 @@ with picamera.PiCamera(sensor_mode=5) as camera:
         stream.seek(0)
         image = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 
             cv2.IMREAD_COLOR)
-        sources = detect.find_source(image)
+        sources, _ = detect.find_source(image)
+
         if len(sources) != 0:
-            coord, _ = detect.find_coordinate(sources[0])
+            print(sources)
+            (x0, y0), (x1, y1) = sources[0]
+            coord, _ = detect.find_coordinate(image[y0:y1, x0:x1])
+            print(coord)
+            coord = (coord[0] + x0, coord[1] + y0)
         else:
-            coord = (-1, -1)
+            sys.exit("Re-calibration necessary!")
+        
         calib_coords.append(coord)
         camera.stop_preview()
     print("Calibration coordinates: {0}".format(calib_coords))
