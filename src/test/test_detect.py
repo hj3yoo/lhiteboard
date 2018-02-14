@@ -20,6 +20,7 @@ def detection_test(arg_dict):
     For each cropped section, coordinate detection will be run
     """
     for img_name in img_list:
+        img = cv2.imread(os.path.join(img_dir, img_name))
         if arg_dict['debug']:
             print(img_name + ':')
             img_show = copy.copy(img)
@@ -28,9 +29,8 @@ def detection_test(arg_dict):
             new_x1 = -1
             new_y1 = -1
             t_start = datetime.now()
-        img = cv2.imread(os.path.join(img_dir, img_name))
         if arg_dict['debug']:
-            sources, t_source = find_source(img)
+            sources, t_source = find_source(img, debug=True)
         else:
             sources = find_source(img)
         # Each sections are represented by a rectangle
@@ -38,7 +38,7 @@ def detection_test(arg_dict):
             x0, y0 = pt0
             x1, y1 = pt1
             if arg_dict['debug']:
-                det_pt, t_coord = find_coordinate(img[y0:y1, x0:x1])
+                det_pt, t_coord = find_coordinate(img[y0:y1, x0:x1], debug=True)
             else:
                 det_pt = find_coordinate(img[y0:y1, x0:x1])
             if arg_dict['debug']:
@@ -57,7 +57,7 @@ def detection_test(arg_dict):
             print("%.5f, %.5f, %.5f" % (t_delta.total_seconds(), t_source, t_coord))
 
             # Display the result to the user, and pause until user proceeds
-            cv2.imshow('Result zoomed', img_show[new_y0-10:new_y1+10, new_x0-10:new_x1+10])
+            cv2.imshow('Result zoomed', img_show[max(new_y0-10, 0):new_y1+10, max(new_x0-10, 0):new_x1+10])
             img_show = cv2.resize(img_show, (len(img[0]) // 4, len(img) // 4))
             cv2.imshow('Result', img_show)
             if not arg_dict['animate']:
