@@ -28,13 +28,13 @@ def find_coordinate(img, blur_size=5, threshold=50, percentile=10, pyramid_heigh
     if debug:
         t_start = datetime.now()
 
-    # If it's already a grayscale image, assume the pre-processing has already been done
+    # Check if the image is already grayscale
     if len(img.shape) == 2:
-        img_thresh = img
+        img_gray = img
     else:
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        img_blur = cv2.GaussianBlur(img_gray, (blur_size, blur_size), 0)
-        img_thresh = cv2.threshold(img_blur, threshold, 255, cv2.THRESH_TOZERO)[1]
+    img_blur = cv2.GaussianBlur(img_gray, (blur_size, blur_size), 0)
+    img_thresh = cv2.threshold(img_blur, threshold, 255, cv2.THRESH_TOZERO)[1]
 
     _, contours, _ = cv2.findContours(img_thresh, 1, 2)
     ellipses = [cv2.fitEllipse(cont) for cont in contours if len(cont) >= 5]
@@ -92,8 +92,11 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False
         t_start = datetime.now()
     ret = []
     # Pre-processing - convert to grayscale, apply Gaussian blur, then remove noises with threshold
-    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # TODO: Blurring may not be necessary if we're only doing detection for up to one point
+    # Check if the image is already grayscale
+    if len(img.shape) == 2:
+        img_gray = img
+    else:
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     img_blur = cv2.GaussianBlur(img_gray, (blur_size, blur_size), 0)
     img_thresh = cv2.threshold(img_blur, threshold, 255, cv2.THRESH_TOZERO)[1]
 

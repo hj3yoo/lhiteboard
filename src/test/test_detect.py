@@ -41,8 +41,8 @@ def detection_test(arg_dict):
                 det_pt, t_coord = find_coordinate(img[y0:y1, x0:x1], debug=True)
             else:
                 det_pt = find_coordinate(img[y0:y1, x0:x1])
-            if arg_dict['debug']:
-                if det_pt[0] != -1 and det_pt[1] != -1:
+            #if arg_dict['debug']:
+                #if det_pt[0] != -1 and det_pt[1] != -1:
                     # Mark the detected point for each section
                     #img_show = cv2.circle(img_show, (x0 + det_pt[0], y0 + det_pt[1]), arg_dict['pt_radius'], COLOR_RED, 3)
                 #img_show = cv2.rectangle(img_show, pt0, pt1, COLOR_GREEN, 3)

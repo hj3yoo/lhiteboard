@@ -128,6 +128,9 @@ class ProcessOutput(object):
 # sensor_mode 6 boosts the FPS
 # read more about the camera modes here: https://picamera.readthedocs.io/en/release-1.13/fov.html#camera-modes
 with picamera.PiCamera(sensor_mode=5) as camera:
+    # Capture grayscale image instead of colour
+    camera.color_effects = (128, 128)
+
     #camera.start_preview() #This outputs the video full-screen in real time
     time.sleep(2)
 
