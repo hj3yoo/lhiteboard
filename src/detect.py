@@ -22,9 +22,10 @@ def find_coordinate(img, blur_size=5, threshold=50, debug=False):
     :param debug:
     :return: x, y coordinate of the point, and elapsed time (for debugging)
     """
-    t_elapsed = -1.0
     if debug:
         t_start = datetime.now()
+    else:
+        t_elapsed = -1.0
     # If the cropped image is too small to do any meaningful process, just return the centre of it
     if img.shape[0] <= blur_size // 2 and img.shape[1] <= blur_size // 2:
         if debug:
@@ -94,6 +95,8 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False
     """
     if debug:
         t_start = datetime.now()
+    else:
+        t_elapsed = -1.0
     ret = []
     if img is None:
         if debug:
@@ -142,6 +145,8 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False
     ret = sorted(ret, key=get_key, reverse=True)
 
     if debug:
-        return ret, t_elapsed
+        t_end = datetime.now()
+        t_elapsed = (t_end - t_start).total_seconds()
+    return ret, t_elapsed
     pass
 

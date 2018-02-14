@@ -58,7 +58,10 @@ class ImageProcessor(threading.Thread):
                     # Don't enable the following for now... it will get the process KILLED
                     # Probably due to using too many resources...somewhere...maybe
                     sources = detect.find_source(image)
-                    coord = detect.find_coordinate(sources[0])
+                    if len(sources) != 0:
+                        coord, _ = detect.find_coordinate(sources[0])
+                    else:
+                        coord = (-1, -1)
                     #print("Found coordinate for frame {0}: {1}".format(idx, coord))
                     with result_lock:
                         result_table[idx] = coord
@@ -148,7 +151,10 @@ with picamera.PiCamera(sensor_mode=5) as camera:
         image = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 
             cv2.IMREAD_COLOR)
         sources = detect.find_source(image)
-        coord = detect.find_coordinate(sources[0])
+        if len(sources) != 0:
+            coord, _ = detect.find_coordinate(sources[0])
+        else:
+            coord = (-1, -1)
         calib_coords.append(coord)
         camera.stop_preview()
     print("Calibration coordinates: {0}".format(calib_coords))
