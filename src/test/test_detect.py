@@ -20,47 +20,43 @@ def detection_test(arg_dict):
     For each cropped section, coordinate detection will be run
     """
     for img_name in img_list:
-        if arg_dict['debug']:
+        if arg_dict['show_img']:
             print(img_name + ':')
+        if arg_dict['debug']:
             t_start = datetime.now()
         img = cv2.imread(os.path.join(img_dir, img_name))
-        if arg_dict['debug']:
-            '''
+        if arg_dict['show_img']:
             img_show = copy.copy(img)
             new_x0 = math.inf
             new_y0 = math.inf
             new_x1 = -1
             new_y1 = -1
-            '''
         sources, t_source = find_source(img, debug=arg_dict['debug'])
         # Each sections are represented by a rectangle
-        for pt0, pt1 in sources[:]:
+        for pt0, pt1 in sources[:1]:
             x0, y0 = pt0
             x1, y1 = pt1
-            det_pt, t_coord = find_coordinate(img[y0:y1, x0:x1], debug=arg_dict['debug'])
-            '''
-            if arg_dict['debug']:
+            det_pt, t_coord = find_coordinate(img[y0:y1, x0:x1], debug=arg_dict['debug'], show_image=arg_dict['show_img'])
+            if arg_dict['show_img']:
                 if det_pt[0] != -1 and det_pt[1] != -1:
                     # Mark the detected point for each section
-                    img_show = cv2.circle(img_show, (x0 + det_pt[0], y0 + det_pt[1]), arg_dict['pt_radius'], COLOR_RED, 3)
-                img_show = cv2.rectangle(img_show, pt0, pt1, COLOR_GREEN, 3)
+                    img_show = cv2.circle(img_show, (x0 + det_pt[0], y0 + det_pt[1]), arg_dict['pt_radius'], COLOR_RED, 1)
+                img_show = cv2.rectangle(img_show, pt0, pt1, COLOR_GREEN, 1)
                 new_x0 = min(new_x0, x0)
                 new_y0 = min(new_y0, y0)
                 new_x1 = max(new_x1, x1)
                 new_y1 = max(new_y1, y1)
-            '''
 
         if arg_dict['debug']:
             t_end = datetime.now()
             t_delta = t_end - t_start
             print("%.5f, %.5f, %.5f" % (t_delta.total_seconds(), t_source, t_coord))
 
-            '''
+        if arg_dict['show_img']:
             # Display the result to the user, and pause until user proceeds
             cv2.imshow('Result zoomed', img_show[max(new_y0-10, 0):new_y1+10, max(new_x0-10, 0):new_x1+10])
             if not arg_dict['animate']:
                 cv2.waitKey(0)
-            '''
     return
 
 
@@ -69,9 +65,10 @@ if __name__ == '__main__':
     parser.add_argument('-dir', required=True, dest='img_dir', type=str, help='Path of the image source folder')
     parser.add_argument('-ani', dest='animate', action='store_true',
                         help='Quickly animate through all test images instead of manual inspection')
-    parser.add_argument('-ptr', dest='pt_radius', type=int, default=10,
+    parser.add_argument('-ptr', dest='pt_radius', type=int, default=3,
                         help='Radius of the circles to mark input points')
     parser.add_argument('-deb', dest='debug', action='store_true', help='Enable debugging features')
+    parser.add_argument('-shi', dest='show_img', action='store_true', help='Display the processing result')
     args = parser.parse_args()
     dict_args = vars(args)
     in_dir = os.path.abspath(dict_args['img_dir'])

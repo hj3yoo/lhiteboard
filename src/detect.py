@@ -13,13 +13,15 @@ COLOR_GREEN = (0, 255, 0)
 COLOR_RED = (0, 0, 255)
 
 
-def find_coordinate(img, blur_size=5, threshold=50, debug=False):
+def find_coordinate(img, blur_size=5, static_threshold=30, dynamic_threshold=50, debug=False, show_image=False):
     """
     Core CV algorithm to locate the intended coordinate of the point given the reflections on the surface
     :param img: source image to run the algorithm on
     :param blur_size: size of the Gaussian blur mask
-    :param threshold: threshold value of pixel brightness to be truncated
+    :param static_threshold: static value of threshold to remove ambient noises
+    :param dynamic_threshold: percentage of pixels ordered in brightness to be selected from thresholding
     :param debug:
+    :param show_image:
     :return: x, y coordinate of the point, and elapsed time (for debugging)
     """
     if debug:
@@ -39,7 +41,11 @@ def find_coordinate(img, blur_size=5, threshold=50, debug=False):
     else:
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     img_blur = cv2.GaussianBlur(img_gray, (blur_size, blur_size), 0)
-    img_thresh = cv2.threshold(img_blur, threshold, 255, cv2.THRESH_TOZERO)[1]
+    # TODO: Modify threshold value to accommodate both static and dynamic filtering
+    # With pixels brighter than static threshold value x (to cancel out noises),
+    # Find the top n% bright pixels
+    thresh_value = calc_hist_percentile(img, static_threshold, 100 - dynamic_threshold)
+    img_thresh = cv2.threshold(img_blur, thresh_value, 255, cv2.THRESH_TOZERO)[1]
 
     # Run contour detection, then each of them into an elliptical shape
     _, contours, _ = cv2.findContours(img_thresh, 1, 2)
@@ -69,7 +75,7 @@ def find_coordinate(img, blur_size=5, threshold=50, debug=False):
     if debug:
         t_end = datetime.now()
         t_elapsed = (t_end - t_start).total_seconds()
-        '''
+    if show_image:
         # Mark the locations in the debug image
         ellipse_centre = (int(ellipse[0][0] + 0.5), int(ellipse[0][1] + 0.5))
         img_debug_show = cv2.cvtColor(img_thresh, cv2.COLOR_GRAY2BGR)
@@ -78,12 +84,11 @@ def find_coordinate(img, blur_size=5, threshold=50, debug=False):
         img_debug_show = cv2.circle(img_debug_show, ellipse_centre, 1, COLOR_RED, 1)
         img_debug_show = cv2.circle(img_debug_show, new_pt, 1, COLOR_BLUE, 1)
         cv2.imshow('coordinates', img_debug_show)
-        cv2.waitKey(0)
-        '''
+        #cv2.waitKey(0)
     return new_pt, t_elapsed
 
 
-def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False):
+def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False, show_image=False):
     """
     Extract the important sections of images where light sources are found
     :param img: source image
@@ -91,6 +96,7 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False
     :param threshold: threshold value of pixel brightness to be truncated
     :param neighbour_ratio: percentage of spaces near the detected area to be considered
     :param debug:
+    :param show_image:
     :return: x, y, width, height of the source
     """
     if debug:
@@ -131,12 +137,11 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False
     if debug:
         t_end = datetime.now()
         t_elapsed = (t_end - t_start).total_seconds()
-        '''
-        #img_debug_show = cv2.drawContours(img_thresh, contours, -1, COLOR_BLUE, 3)
-        #img_debug_show = cv2.resize(img_thresh, (len(img_thresh[0]) // 4, len(img_thresh) // 4))
-        #cv2.imshow('threshold', img_debug_show)
+    if show_image:
+        img_debug_show = cv2.drawContours(img_thresh, contours, -1, COLOR_BLUE, 3)
+        img_debug_show = cv2.resize(img_thresh, (len(img_thresh[0]) // 4, len(img_thresh) // 4))
+        cv2.imshow('threshold', img_debug_show)
         #cv2.waitKey(0)
-        '''
 
     # TODO: Convert to multi-coordinate detection
     # Sorted by the size of the rectangle in descending order
@@ -149,3 +154,25 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False
         t_elapsed = (t_end - t_start).total_seconds()
     return ret, t_elapsed
     pass
+
+def calc_hist_percentile(img, min_bright, percentile):
+    """
+    Find the brightness value of pixels for the given percentile
+    :param img: source image
+    :param min_bright: any pixels below this brightness value will be ignored
+    :param percentile: percentile value to decide the threshold
+    :return: threshold brightness value
+    """
+    # Create a histogram where each possible brightness value is represented by a bin
+    hist = cv2.calcHist([img], [0], None, [256 - min_bright], [min_bright, 256])
+    sample_size = sum(hist)
+    thresh_num_pixel = sample_size * percentile / 100
+    #print(sample_size, thresh_num_pixel)
+    num_counted = 0
+    # Starting from the lowest brightness, count the number of pixels in each bin until the given percentile
+    for idx in range(len(hist)):
+        num_pixel = hist[idx][0]
+        num_counted += num_pixel
+        if num_counted >= thresh_num_pixel:
+            return idx + min_bright - 1
+    raise ValueError('Percentile not found')
