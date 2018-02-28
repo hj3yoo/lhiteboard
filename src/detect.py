@@ -150,3 +150,12 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False
     return ret, t_elapsed
     pass
 
+
+def warp_image(image, corners, target):
+    mat = cv2.GetPerspectiveTransform(corners, target)
+    out = cv2.warpPerspective(image, mat, (640, 480))
+    #mat = cv2.CreateMat(3, 3, cv.CV_32F)
+    #cv2.GetPerspectiveTransform(corners, target, mat)
+    #out = cv2.CreateMat(height, width, cv.CV_8UC3)
+    #cv2.WarpPerspective(image, out, mat, cv.CV_INTER_CUBIC)
+    return out
