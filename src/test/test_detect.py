@@ -24,11 +24,6 @@ def detection_test(arg_dict):
             print(img_name + ':')
             t_start = datetime.now()
         img = cv2.imread(os.path.join(img_dir, img_name))
-        target = [(0, 0), (0, img.shape[1]), (img.shape[0], 0), (img.shape[0], img.shape[1])]
-        corner = [(0, 0), (0, img.shape[1] // 2), (img.shape[0] // 2, 0), (img.shape[0], img.shape[1])]
-        img_out = detect.warp_image(img, corner, target)
-        cv2.imshow('original', img)
-        cv2.imshow('warped', img_out)
         if arg_dict['debug']:
             '''
             img_show = copy.copy(img)
