@@ -1,2 +1,6 @@
 bin
 *.swp
+.idea/*
+src/.idea/*
+src/__pycache__/*.pyc
+src/test/__pycache__/*.pyc
