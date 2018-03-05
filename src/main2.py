@@ -6,13 +6,16 @@ import cv2
 import numpy as np
 import sys
 from io import BytesIO
+import debug_render as dbr
 
 import detect
 
 NUM_THREADS = 8 
 
+
 result_lock = threading.Lock()
 result_table = {}
+dr = dbr.DebugRenderer(640, 480)
 
 #calib_coords gets populated during calibration
 #stored in this order: L0(x=0,y=0),L1(0,1), L2(1,1), L3(1,0)
@@ -64,7 +67,9 @@ class Consumer(threading.Thread):
                 if get is not None:
                     print("Consumed coordinate {0}: {1}".format(self.i, get))
                     if get != (-1, -1):
-                        print("---> NSC: {0}".format(to_normalized_screen_coords(get)))
+                        nsc = to_normalized_screen_coords(get)
+                        print("---> NSC: {0}".format(nsc))
+                        dr.push_point_mt(nsc[0], nsc[1])
                     self.i += 1
                     
 class ImageProcessor(threading.Thread):
@@ -177,6 +182,20 @@ class ProcessOutput(object):
 
 # sensor_mode 6 boosts the FPS
 # read more about the camera modes here: https://picamera.readthedocs.io/en/release-1.13/fov.html#camera-modes
+
+class CameraThread(threading.Thread):
+    def __init__(self, camera, output):
+        super(CameraThread, self).__init__()
+        self.camera = camera
+        self.output = output
+        self.start()
+
+    def run(self):
+        camera.start_recording(output, format='mjpeg')
+        while not output.done:
+            camera.wait_recording(1)
+        camera.stop_recording()
+
 with picamera.PiCamera(sensor_mode=5) as camera:
     # Capture grayscale image instead of colour
     camera.color_effects = (128, 128)
@@ -215,6 +234,7 @@ with picamera.PiCamera(sensor_mode=5) as camera:
     output = ProcessOutput()
     consumer = Consumer()
     time_begin = time.time()
+    dr.show_clear()
 
     import signal, sys
     def signal_handler(signal, frame):
@@ -228,14 +248,10 @@ with picamera.PiCamera(sensor_mode=5) as camera:
         print("Detected percent: {0}".format(detected_percent))
     signal.signal(signal.SIGQUIT, signal_handler)
 
-    camera.start_recording(output, format='mjpeg')
-    while not output.done:
-        camera.wait_recording(1)
-    camera.stop_recording()
+    cam_thread = CameraThread(camera, output)
+    dr.mainloop() 
 
-    consumer.terminated = True
-    consumer.join()
-    
+    # TODO actual cleanup somehow
     print("Quitting...")
 
 
