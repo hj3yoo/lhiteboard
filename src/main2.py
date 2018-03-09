@@ -16,7 +16,7 @@ NUM_THREADS = 8
 
 result_lock = threading.Lock()
 result_table = {}
-dr = dbr.DebugRenderer(640, 480)
+dr = dbr.DebugRenderer()
 
 #calib_coords gets populated during calibration
 #stored in this order: L0(x=0,y=0),L1(0,1), L2(1,1), L3(1,0)

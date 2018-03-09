@@ -9,12 +9,19 @@ UPDATE_DELAY_SEC=(1.0/30)
 
 class DebugRenderer():
 
-    def __init__(self, w, h):
+    def __init__(self):
         self.master = Tk()
-        self.wh = (w, h)
-        self.canvas = Canvas(self.master, width=w, height=h)
+        self.master.attributes("-fullscreen", True)
+        self.w = self.master.winfo_screenwidth()
+        self.h = self.master.winfo_screenheight()
+        self.canvas = Canvas(self.master, width=self.w, height=self.h)
+        self.canvas.config(background="teal")
         self.canvas.pack()
-        self.active_point = self.canvas.create_oval(0, 0, POINT_WIDTH, POINT_HEIGHT)
+        self.active_point = self.canvas.create_oval(
+            self.w / 2 - POINT_WIDTH / 2, 
+            self.h / 2 - POINT_HEIGHT / 2, 
+            self.w / 2 + POINT_WIDTH / 2,
+            self.h / 2 + POINT_HEIGHT / 2)
         self.queue = queue.Queue()
 
     def push_point_mt(self, x, y):
@@ -64,7 +71,7 @@ class DebugRenderer():
 
     def normalized_cam_to_canvas(self, ncx, ncy):
         #TODO: figure out the following formula
-        return (self.wh[0] * ncy, self.wh[1] * ncx)
+        return (self.w * ncy, self.h * ncx)
 
 
 if __name__ == "__main__":
