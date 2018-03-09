@@ -7,6 +7,7 @@ import numpy as np
 import sys
 from io import BytesIO
 import debug_render as dbr
+import calib_save as cs
 
 import detect
 
@@ -196,13 +197,8 @@ class CameraThread(threading.Thread):
             camera.wait_recording(1)
         camera.stop_recording()
 
-with picamera.PiCamera(sensor_mode=5) as camera:
-    # Capture grayscale image instead of colour
-    camera.color_effects = (128, 128)
-
-    #camera.start_preview() #This outputs the video full-screen in real time
-    time.sleep(2)
-
+def calibrate(camera):
+    global calib_coords
     # Calibration - let the user grab 4 coordinates 
     # U press keyboard to take pic
     dirs = ["TOP LEFT", "TOP RIGHT", "BOT RIGHT", "BOT LEFT"]
@@ -228,6 +224,23 @@ with picamera.PiCamera(sensor_mode=5) as camera:
         
         calib_coords.append(coord)
         camera.stop_preview()
+
+with picamera.PiCamera(sensor_mode=5) as camera:
+    # Capture grayscale image instead of colour
+    camera.color_effects = (128, 128)
+
+    #camera.start_preview() #This outputs the video full-screen in real time
+    time.sleep(2)
+
+    answer = input("Do you want to use the saved calibration data? [y/n]:")
+    if answer == "y" or answer == "Y":
+        calib_coords = cs.read_calib()
+    else:
+        calibrate(camera)
+        answer = input("Save this calibration data? [y/n]:")
+        if answer == "y" or answer == "Y":
+            cs.save_calib(calib_coords)
+
     print("Calibration coordinates: {0}".format(calib_coords))
 
     # actually start our threads now    
