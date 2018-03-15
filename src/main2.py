@@ -22,36 +22,12 @@ dr = dbr.DebugRenderer()
 #stored in this order: L0(x=0,y=0),L1(0,1), L2(1,1), L3(1,0)
 #algorithm from: https://math.stackexchange.com/questions/13404/mapping-irregular-quadrilateral-to-a-rectangle/1361366#1361366
 calib_coords = []
+warp_matrix = None
+
 def to_normalized_screen_coords(raw_coord):
-    Qx0 = calib_coords[0][0]
-    Qx1 = calib_coords[1][0]
-    Qx2 = calib_coords[2][0]
-    Qx3 = calib_coords[3][0]
-
-    Qy0 = calib_coords[0][1]
-    Qy1 = calib_coords[1][1]
-    Qy2 = calib_coords[2][1]
-    Qy3 = calib_coords[3][1]
-
-    x = raw_coord[0]
-    y = raw_coord[1]
-
-    ax = (x - Qx0) + (Qx1 - Qx0) * (y - Qy0) / (Qy0 - Qy1)
-    a3x = (Qx3 - Qx0) + (Qx1 - Qx0) * (Qy3 - Qy0) / (Qy0 - Qy1)
-    a2x = (Qx2 - Qx0) + (Qx1 - Qx0) * (Qy2 - Qy0) / (Qy0 - Qy1)
-    ay = (y - Qy0) + (Qy3 - Qy0) * (x - Qx0) / (Qx0 - Qx3)
-    a1y = (Qy1 - Qy0) + (Qy3 - Qy0) * (Qx1 - Qx0) / (Qx0 - Qx3)
-    a2y = (Qy2 - Qy0) + (Qy3 - Qy0) * (Qx2 - Qx0) / (Qx0 - Qx3)
-    bx = x * y - Qx0 * Qy0 + (Qx1 * Qy1 - Qx0 * Qy0) * (y - Qy0) / (Qy0 - Qy1)
-    b3x = Qx3 * Qy3 - Qx0 * Qy0 + (Qx1 * Qy1 - Qx0 * Qy0) * (Qy3 - Qy0) / (Qy0 - Qy1)
-    b2x = Qx2 * Qy2 - Qx0 * Qy0 + (Qx1 * Qy1 - Qx0 * Qy0) * (Qy2 - Qy0) / (Qy0 - Qy1)
-    by = x * y - Qx0 * Qy0 + (Qx3 * Qy3 - Qx0 * Qy0) * (x - Qx0) / (Qx0 - Qx3)
-    b1y = Qx1 * Qy1 - Qx0 * Qy0 + (Qx3 * Qy3 - Qx0 * Qy0) * (Qx1 - Qx0) / (Qx0 - Qx3)
-    b2y = Qx2 * Qy2 - Qx0 * Qy0 + (Qx3 * Qy3 - Qx0 * Qy0) * (Qx2 - Qx0) / (Qx0 - Qx3)
-
-    out_x = (ax / a3x) + (1 - a2x / a3x) * (bx - b3x * ax / a3x) / (b2x - b3x * a2x / a3x)
-    out_y  = (ay / a1y) + (1 - a2y / a1y) * (by - b1y * ay / a1y) / (b2y - b1y * a2y / a1y)
-    return (out_x, out_y)
+    np_raw = np.float32([raw_coord[0], raw_coord[1], 1.0])
+    warped = warp_matrix.dot(np_raw)
+    return (warped[0]/warped[2]/640.0, warped[1]/warped[2]/480.0)
 
 class Consumer(threading.Thread):
     def __init__(self):
@@ -98,8 +74,6 @@ class ImageProcessor(threading.Thread):
                     image = cv2.imdecode(np.fromstring(self.stream.getvalue(), 
                         dtype=np.uint8), cv2.IMREAD_COLOR)
 
-                    # Don't enable the following for now... it will get the process KILLED
-                    # Probably due to using too many resources...somewhere...maybe
                     sources, _ = detect.find_source(image)
 
                     if len(sources) != 0:
@@ -242,6 +216,14 @@ with picamera.PiCamera(sensor_mode=5) as camera:
             cs.save_calib(calib_coords)
 
     print("Calibration coordinates: {0}".format(calib_coords))
+    np_calib_points = np.float32([
+        [calib_coords[0][0], calib_coords[0][1]], 
+        [calib_coords[1][0], calib_coords[1][1]], 
+        [calib_coords[2][0], calib_coords[2][1]], 
+        [calib_coords[3][0], calib_coords[3][1]]
+    ])
+    np_warped_points = np.float32([[0, 0], [640, 0], [640, 480], [0, 480]])
+    warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
 
     # actually start our threads now    
     output = ProcessOutput()

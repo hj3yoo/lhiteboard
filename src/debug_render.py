@@ -17,11 +17,7 @@ class DebugRenderer():
         self.canvas = Canvas(self.master, width=self.w, height=self.h)
         self.canvas.config(background="teal")
         self.canvas.pack()
-        self.active_point = self.canvas.create_oval(
-            self.w / 2 - POINT_WIDTH / 2, 
-            self.h / 2 - POINT_HEIGHT / 2, 
-            self.w / 2 + POINT_WIDTH / 2,
-            self.h / 2 + POINT_HEIGHT / 2)
+        self.active_point = None
         self.queue = queue.Queue()
 
     def push_point_mt(self, x, y):
@@ -51,9 +47,6 @@ class DebugRenderer():
         Input is the coordinate found by the image detection algorithm.
         (-1, -1) if it is not valid and (0, 0) being in the top left corner.
         """
-
-        #TODO: following keeps around old points. why?
-        self.canvas.delete(self.active_point)
         coord = self.normalized_cam_to_canvas(x, y)
 
         if x != -1 and y != -1:
@@ -70,8 +63,7 @@ class DebugRenderer():
         self.master.update()
 
     def normalized_cam_to_canvas(self, ncx, ncy):
-        #TODO: figure out the following formula
-        return (self.w * ncy, self.h * ncx)
+        return (self.w * ncx, self.h * ncy)
 
 
 if __name__ == "__main__":
