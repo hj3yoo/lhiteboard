@@ -13,7 +13,6 @@ import detect
 
 NUM_THREADS = 8 
 
-
 result_lock = threading.Lock()
 result_table = {}
 dr = dbr.DebugRenderer()
@@ -178,7 +177,7 @@ def calibrate(camera):
     dirs = ["TOP LEFT", "TOP RIGHT", "BOT RIGHT", "BOT LEFT"]
     for i in range(len(dirs)):
         print("Taking {0} calibration picture. Press keyboard when ready.".format(dirs[i]))
-        camera.start_preview()
+        #camera.start_preview()
         sys.stdin.readline()
         stream = BytesIO() 
         camera.capture(stream, format='jpeg')
@@ -197,7 +196,7 @@ def calibrate(camera):
             sys.exit("Re-calibration necessary!")
         
         calib_coords.append(coord)
-        camera.stop_preview()
+        #camera.stop_preview()
 
 with picamera.PiCamera(sensor_mode=5) as camera:
     # Capture grayscale image instead of colour
@@ -210,6 +209,7 @@ with picamera.PiCamera(sensor_mode=5) as camera:
     if answer == "y" or answer == "Y":
         calib_coords = cs.read_calib()
     else:
+        dr.show_calib_img()
         calibrate(camera)
         answer = input("Save this calibration data? [y/n]:")
         if answer == "y" or answer == "Y":
@@ -222,7 +222,10 @@ with picamera.PiCamera(sensor_mode=5) as camera:
         [calib_coords[2][0], calib_coords[2][1]], 
         [calib_coords[3][0], calib_coords[3][1]]
     ])
-    np_warped_points = np.float32([[0, 0], [640, 0], [640, 480], [0, 480]])
+    np_warped_points = np.float32([[dbr.CALIB_BORDER, dbr.CALIB_BORDER], 
+        [640-dbr.CALIB_BORDER, dbr.CALIB_BORDER], 
+        [640-dbr.CALIB_BORDER, 480-dbr.CALIB_BORDER], 
+        [dbr.CALIB_BORDER, 480-dbr.CALIB_BORDER]])
     warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
 
     # actually start our threads now    

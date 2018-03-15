@@ -7,6 +7,8 @@ POINT_WIDTH=10
 POINT_HEIGHT=10
 UPDATE_DELAY_SEC=(1.0/30)
 
+CALIB_BORDER = 0
+
 class DebugRenderer():
 
     def __init__(self):
@@ -17,8 +19,29 @@ class DebugRenderer():
         self.canvas = Canvas(self.master, width=self.w, height=self.h)
         self.canvas.config(background="teal")
         self.canvas.pack()
-        self.active_point = None
         self.queue = queue.Queue()
+        self.cp = []
+
+    def show_calib_img(self):
+        self.canvas.create_oval(
+            CALIB_BORDER - 5, 
+            CALIB_BORDER - 5, 
+            CALIB_BORDER + 5, 
+            CALIB_BORDER + 5)
+        self.canvas.create_oval(
+            self.w - CALIB_BORDER - 5, 
+            CALIB_BORDER - 5, 
+            self.w - CALIB_BORDER + 5, 
+            CALIB_BORDER + 5)
+        self.canvas.create_oval(self.w - CALIB_BORDER - 5, 
+            self.h - CALIB_BORDER - 5, 
+            self.w - CALIB_BORDER + 5, 
+            self.h - CALIB_BORDER + 5)
+        self.canvas.create_oval(
+            CALIB_BORDER - 5, 
+            self.h - CALIB_BORDER - 5, 
+            CALIB_BORDER + 5, 
+            self.h - CALIB_BORDER + 5)
 
     def push_point_mt(self, x, y):
         """
@@ -50,16 +73,17 @@ class DebugRenderer():
         coord = self.normalized_cam_to_canvas(x, y)
 
         if x != -1 and y != -1:
-            self.canvas.active_point = self.canvas.create_oval(
+            self.canvas.create_oval(
                 coord[0] - POINT_WIDTH  / 2,
                 coord[1] - POINT_HEIGHT / 2,
                 coord[0] - POINT_WIDTH  / 2 + POINT_WIDTH,
-                coord[1] - POINT_HEIGHT / 2 + POINT_HEIGHT)
+                coord[1] - POINT_HEIGHT / 2 + POINT_HEIGHT
+            )
 
         self.master.update()
 
     def show_clear(self):
-        self.canvas.delete(self.active_point)
+        self.canvas.delete("all")
         self.master.update()
 
     def normalized_cam_to_canvas(self, ncx, ncy):
