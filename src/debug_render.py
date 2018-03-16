@@ -16,6 +16,7 @@ class DebugRenderer():
         self.master.attributes("-fullscreen", True)
         self.w = self.master.winfo_screenwidth()
         self.h = self.master.winfo_screenheight()
+        print(self.w, self.h)
         self.canvas = Canvas(self.master, width=self.w, height=self.h)
         self.canvas.config(background="teal")
         self.canvas.pack()
@@ -23,25 +24,27 @@ class DebugRenderer():
         self.cp = []
 
     def show_calib_img(self):
+        radius = 100
         self.canvas.create_oval(
-            CALIB_BORDER - 5, 
-            CALIB_BORDER - 5, 
-            CALIB_BORDER + 5, 
-            CALIB_BORDER + 5)
+            CALIB_BORDER - radius, 
+            CALIB_BORDER - radius, 
+            CALIB_BORDER + radius, 
+            CALIB_BORDER + radius)
         self.canvas.create_oval(
-            self.w - CALIB_BORDER - 5, 
-            CALIB_BORDER - 5, 
-            self.w - CALIB_BORDER + 5, 
-            CALIB_BORDER + 5)
-        self.canvas.create_oval(self.w - CALIB_BORDER - 5, 
-            self.h - CALIB_BORDER - 5, 
-            self.w - CALIB_BORDER + 5, 
-            self.h - CALIB_BORDER + 5)
+            self.w - CALIB_BORDER - radius, 
+            CALIB_BORDER - radius, 
+            self.w - CALIB_BORDER + radius, 
+            CALIB_BORDER + radius)
+        self.canvas.create_oval(self.w - CALIB_BORDER - radius, 
+            self.h - CALIB_BORDER - radius, 
+            self.w - CALIB_BORDER + radius, 
+            self.h - CALIB_BORDER + radius)
         self.canvas.create_oval(
-            CALIB_BORDER - 5, 
-            self.h - CALIB_BORDER - 5, 
-            CALIB_BORDER + 5, 
-            self.h - CALIB_BORDER + 5)
+            CALIB_BORDER - radius, 
+            self.h - CALIB_BORDER - radius, 
+            CALIB_BORDER + radius, 
+            self.h - CALIB_BORDER + radius)
+        self.master.update()
 
     def push_point_mt(self, x, y):
         """
@@ -65,7 +68,7 @@ class DebugRenderer():
         time.sleep(UPDATE_DELAY_SEC)
 
 
-    def show_point(self, x, y):
+    def show_point(self, x, y, radius=POINT_WIDTH):
         """
         Input is the coordinate found by the image detection algorithm.
         (-1, -1) if it is not valid and (0, 0) being in the top left corner.
@@ -74,10 +77,10 @@ class DebugRenderer():
 
         if x != -1 and y != -1:
             self.canvas.create_oval(
-                coord[0] - POINT_WIDTH  / 2,
-                coord[1] - POINT_HEIGHT / 2,
-                coord[0] - POINT_WIDTH  / 2 + POINT_WIDTH,
-                coord[1] - POINT_HEIGHT / 2 + POINT_HEIGHT
+                coord[0] - radius,
+                coord[1] - radius,
+                coord[0] + radius,
+                coord[1] + radius
             )
 
         self.master.update()

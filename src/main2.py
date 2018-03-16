@@ -14,8 +14,8 @@ import sys
 import detect
 
 NUM_THREADS = 8
-WIDTH = 640
-HEIGHT = 480
+WIDTH = 800
+HEIGHT = 600
 
 result_lock = threading.Lock()
 result_table = {}
@@ -183,31 +183,50 @@ class CameraThread(threading.Thread):
 
 
 def calibrate(camera):
-    coords = []
+    calib_coords = []
     # Calibration - let the user grab 4 coordinates 
     # U press keyboard to take pic
 
     stream = BytesIO()
 
     dirs = ["TOP LEFT", "TOP RIGHT", "BOT RIGHT", "BOT LEFT"]
-    for direction in dirs:
-        coord_found = False
+    expected_coords = [(0, 0), (WIDTH, 0), (WIDTH, HEIGHT), (0, HEIGHT)]
+    #camera.start_preview()
+    for i in range(len(dirs)):
+        direction = dirs[i]
+        expected_coord = expected_coords[i]
+        num_coord_found = 0
+        coords = []
+        dr.show_clear()
+        dr.show_point(expected_coord[0], expected_coord[1], radius=100)
         print('Please point your device towards %s corner of the screen' % direction)
         # Continuously capture frame until a coordinate is detected
-        while coord_found:
+        while num_coord_found < 3:
             camera.capture(stream, format='jpeg')
+            stream.seek(0)
             image = cv2.imdecode(np.fromstring(stream.getvalue(),
                                                dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
             sources, _ = detect.find_source(image)
+            cv2.imshow('source', image)
+            print(sources)
             if len(sources) != 0:
                 (x0, y0), (x1, y1) = sources[0]
                 coord, _ = detect.find_coordinate(image[y0:y1, x0:x1])
-                coord = (coord[0] + x0, coord[1] + y0)
-                coords.append(coord)
-                print('%s: %s' % (direction, coord))
-                coord_found = True
+                if coord != (-1, -1):
+                    print(coord)
+                    coord = (coord[0] + x0, coord[1] + y0)
+                    coords.append(coord)
+                    print('%s: %s' % (direction, coord))
+                    num_coord_found += 1
+        average_x = 0
+        average_y = 0
+        for x, y in coords:
+            average_x += x
+            average_y += y
+        average_coord = (average_x / len(coords), average_y / len(coords))
+        calib_coords.append(average_coord)
         time.sleep(1)
-
+    #camera.stop_preview()
     '''  
     for i in range(len(dirs)):
         print("Taking {0} calibration picture. Press keyboard when ready.".format(dirs[i]))
@@ -232,7 +251,7 @@ def calibrate(camera):
         coords.append(coord)
         #camera.stop_preview()
     '''
-    return coords
+    return calib_coords
 
 with picamera.PiCamera(sensor_mode=5) as camera_pi:
     # Capture grayscale image instead of colour
@@ -245,7 +264,7 @@ with picamera.PiCamera(sensor_mode=5) as camera_pi:
     if answer == "y" or answer == "Y":
         calib_coords = cs.read_calib()
     else:
-        dr.show_calib_img()
+        #dr.show_calib_img()
         calib_coords = calibrate(camera_pi)
         answer = input("Save this calibration data? [y/n]:")
         if answer == "y" or answer == "Y":
