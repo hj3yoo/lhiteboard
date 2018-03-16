@@ -10,13 +10,11 @@ UPDATE_DELAY_SEC=(1.0/30)
 CALIB_BORDER = 0
 
 class DebugRenderer():
-
     def __init__(self):
         self.master = Tk()
         self.master.attributes("-fullscreen", True)
         self.w = self.master.winfo_screenwidth()
         self.h = self.master.winfo_screenheight()
-        print(self.w, self.h)
         self.canvas = Canvas(self.master, width=self.w, height=self.h)
         self.canvas.config(background="teal")
         self.canvas.pack()
@@ -68,13 +66,16 @@ class DebugRenderer():
         time.sleep(UPDATE_DELAY_SEC)
 
 
-    def show_point(self, x, y, radius=POINT_WIDTH):
+    def show_point(self, x, y, radius=POINT_WIDTH, transform=True):
         """
         Input is the coordinate found by the image detection algorithm.
         (-1, -1) if it is not valid and (0, 0) being in the top left corner.
         """
-        coord = self.normalized_cam_to_canvas(x, y)
-
+        if transform:
+            coord = self.normalized_cam_to_canvas(x, y)
+        else:
+            coord = (x, y)
+            
         if x != -1 and y != -1:
             self.canvas.create_oval(
                 coord[0] - radius,

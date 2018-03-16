@@ -198,7 +198,7 @@ def calibrate(camera):
         num_coord_found = 0
         coords = []
         dr.show_clear()
-        dr.show_point(expected_coord[0], expected_coord[1], radius=100)
+        dr.show_point(expected_coord[0], expected_coord[1], radius=25, transform=False)
         print('Please point your device towards %s corner of the screen' % direction)
         # Continuously capture frame until a coordinate is detected
         while num_coord_found < 3:
