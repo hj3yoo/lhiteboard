@@ -10,7 +10,7 @@ import debug_render as dbr
 import calib_save as cs
 import signal
 import sys
-
+from subprocess import call
 import detect
 
 NUM_THREADS = 8
@@ -19,7 +19,7 @@ HEIGHT = 600
 
 result_lock = threading.Lock()
 result_table = {}
-dr = dbr.DebugRenderer()
+#dr = dbr.DebugRenderer()
 
 #calib_coords gets populated during calibration
 #stored in this order: L0(x=0,y=0),L1(0,1), L2(1,1), L3(1,0)
@@ -51,7 +51,8 @@ class Consumer(threading.Thread):
                     if get != (-1, -1):
                         nsc = to_normalized_screen_coords(get)
                         print("---> NSC: {0}".format(nsc))
-                        dr.push_point_mt(nsc[0], nsc[1])
+                        #dr.push_point_mt(nsc[0], nsc[1])
+                        call(["xdotool", "mousemove", str(nsc[0]), str(nsc[1])])
                     self.i += 1
 
 
@@ -197,11 +198,11 @@ def calibrate(camera):
         expected_coord = expected_coords[i]
         num_coord_found = 0
         coords = []
-        dr.show_clear()
-        dr.show_point(expected_coord[0], expected_coord[1], radius=25, transform=False)
+        #dr.show_clear()
+        #dr.show_point(expected_coord[0], expected_coord[1], radius=25, transform=False)
         print('Please point your device towards %s corner of the screen' % direction)
         # Continuously capture frame until a coordinate is detected
-        while num_coord_found < 3:
+        while num_coord_found < 5:
             camera.capture(stream, format='jpeg')
             stream.seek(0)
             image = cv2.imdecode(np.fromstring(stream.getvalue(),
@@ -225,7 +226,7 @@ def calibrate(camera):
             average_y += y
         average_coord = (average_x / len(coords), average_y / len(coords))
         calib_coords.append(average_coord)
-        time.sleep(1)
+        time.sleep(2)
     #camera.stop_preview()
     '''  
     for i in range(len(dirs)):
@@ -287,7 +288,7 @@ with picamera.PiCamera(sensor_mode=5) as camera_pi:
     process_output = ProcessOutput()
     consumer = Consumer()
     time_begin = time.time()
-    dr.show_clear()
+    #dr.show_clear()
 
     def signal_handler(signal, frame):
         time_now = time.time()
