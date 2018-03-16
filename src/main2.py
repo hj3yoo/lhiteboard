@@ -8,10 +8,14 @@ import sys
 from io import BytesIO
 import debug_render as dbr
 import calib_save as cs
+import signal
+import sys
 
 import detect
 
-NUM_THREADS = 8 
+NUM_THREADS = 8
+WIDTH = 640
+HEIGHT = 480
 
 result_lock = threading.Lock()
 result_table = {}
@@ -23,10 +27,12 @@ dr = dbr.DebugRenderer()
 #calib_coords = []
 warp_matrix = None
 
+
 def to_normalized_screen_coords(raw_coord):
     np_raw = np.float32([raw_coord[0], raw_coord[1], 1.0])
     warped = warp_matrix.dot(np_raw)
-    return (warped[0]/warped[2]/640.0, warped[1]/warped[2]/480.0)
+    return warped[0]/warped[2]/WIDTH, warped[1]/warped[2]/HEIGHT
+
 
 class Consumer(threading.Thread):
     def __init__(self):
@@ -47,7 +53,8 @@ class Consumer(threading.Thread):
                         print("---> NSC: {0}".format(nsc))
                         dr.push_point_mt(nsc[0], nsc[1])
                     self.i += 1
-                    
+
+
 class ImageProcessor(threading.Thread):
     def __init__(self, owner):
         super(ImageProcessor, self).__init__()
@@ -70,8 +77,8 @@ class ImageProcessor(threading.Thread):
                         idx = self.owner.frames_processed
                         self.owner.frames_processed += 1
 
-                    image = cv2.imdecode(np.fromstring(self.stream.getvalue(), 
-                        dtype=np.uint8), cv2.IMREAD_COLOR)
+                    image = cv2.imdecode(np.fromstring(self.stream.getvalue(),
+                                                       dtype=np.uint8), cv2.IMREAD_COLOR)
 
                     sources, _ = detect.find_source(image)
 
@@ -103,6 +110,7 @@ class ImageProcessor(threading.Thread):
                     # Return ourselves to the available pool
                     with self.owner.lock:
                         self.owner.pool.append(self)
+
 
 class ProcessOutput(object):
     def __init__(self):
@@ -154,9 +162,9 @@ class ProcessOutput(object):
             proc.terminated = True
             proc.join()
 
+
 # sensor_mode 6 boosts the FPS
 # read more about the camera modes here: https://picamera.readthedocs.io/en/release-1.13/fov.html#camera-modes
-
 class CameraThread(threading.Thread):
     def __init__(self, camera, output):
         super(CameraThread, self).__init__()
@@ -165,13 +173,14 @@ class CameraThread(threading.Thread):
         self.start()
 
     def run(self):
-        camera.start_recording(output, format='mjpeg')
-        while not output.done:
-            camera.wait_recording(1)
-        camera.stop_recording()
+        camera_pi.start_recording(process_output, format='mjpeg')
+        while not process_output.done:
+            camera_pi.wait_recording(1)
+        camera_pi.stop_recording()
+
 
 def calibrate(camera):
-    calib_coords = []
+    coords = []
     # Calibration - let the user grab 4 coordinates 
     # U press keyboard to take pic
     dirs = ["TOP LEFT", "TOP RIGHT", "BOT RIGHT", "BOT LEFT"]
@@ -195,15 +204,16 @@ def calibrate(camera):
         else:
             sys.exit("Re-calibration necessary!")
         
-        calib_coords.append(coord)
-        return calib_coords
+        coords.append(coord)
+        return coords
         #camera.stop_preview()
 
-with picamera.PiCamera(sensor_mode=5) as camera:
-    # Capture grayscale image instead of colour
-    camera.color_effects = (128, 128)
 
-    #camera.start_preview() #This outputs the video full-screen in real time
+with picamera.PiCamera(sensor_mode=5) as camera_pi:
+    # Capture grayscale image instead of colour
+    camera_pi.color_effects = (128, 128)
+
+    #camera_pi.start_preview() #This outputs the video full-screen in real time
     time.sleep(2)
 
     answer = input("Do you want to use the saved calibration data? [y/n]:")
@@ -211,7 +221,7 @@ with picamera.PiCamera(sensor_mode=5) as camera:
         calib_coords = cs.read_calib()
     else:
         dr.show_calib_img()
-        calib_coords = calibrate(camera)
+        calib_coords = calibrate(camera_pi)
         answer = input("Save this calibration data? [y/n]:")
         if answer == "y" or answer == "Y":
             cs.save_calib(calib_coords)
@@ -224,30 +234,29 @@ with picamera.PiCamera(sensor_mode=5) as camera:
         [calib_coords[3][0], calib_coords[3][1]]
     ])
     np_warped_points = np.float32([[dbr.CALIB_BORDER, dbr.CALIB_BORDER], 
-        [640-dbr.CALIB_BORDER, dbr.CALIB_BORDER], 
-        [640-dbr.CALIB_BORDER, 480-dbr.CALIB_BORDER], 
-        [dbr.CALIB_BORDER, 480-dbr.CALIB_BORDER]])
+        [WIDTH-dbr.CALIB_BORDER, dbr.CALIB_BORDER],
+        [WIDTH-dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER],
+        [dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER]])
     warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
 
     # actually start our threads now    
-    output = ProcessOutput()
+    process_output = ProcessOutput()
     consumer = Consumer()
     time_begin = time.time()
     dr.show_clear()
 
-    import signal, sys
     def signal_handler(signal, frame):
         time_now = time.time()
-        fps = output.frames_processed / (time_now - time_begin)
-        dropped_percent = output.frames_dropped / (output.frames_dropped
-            + output.frames_processed) * 100.0
-        detected_percent = output.frames_detected / output.frames_processed * 100.0;
+        fps = process_output.frames_processed / (time_now - time_begin)
+        dropped_percent = process_output.frames_dropped / (process_output.frames_dropped
+                                                   + process_output.frames_processed) * 100.0
+        detected_percent = process_output.frames_detected / process_output.frames_processed * 100.0
         print("Average FPS thus far: {0}".format(fps))  
         print("Avg. % of frames dropped: {0}".format(dropped_percent))
         print("Detected percent: {0}".format(detected_percent))
     signal.signal(signal.SIGQUIT, signal_handler)
 
-    cam_thread = CameraThread(camera, output)
+    cam_thread = CameraThread(camera_pi, process_output)
     dr.mainloop() 
 
     # TODO actual cleanup somehow
