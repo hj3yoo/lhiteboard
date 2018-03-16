@@ -51,12 +51,7 @@ class Consumer(threading.Thread):
                     if get != (-1, -1):
                         nsc = to_normalized_screen_coords(get)
                         print("---> NSC: {0}".format(nsc))
-<<<<<<< HEAD
-                        #dr.push_point_mt(nsc[0], nsc[1])
-                        #call(['xdotool', 'mousemove', str(nsc[0]), str(nsc[1])])
-=======
                         dr.push_point_mt(nsc[0], nsc[1])
->>>>>>> parent of c8e2322... temp
                     self.i += 1
 
 
@@ -306,7 +301,7 @@ with picamera.PiCamera(sensor_mode=5) as camera_pi:
     signal.signal(signal.SIGQUIT, signal_handler)
 
     cam_thread = CameraThread(camera_pi, process_output)
-    #dr.mainloop() 
+    dr.mainloop() 
 
     # TODO actual cleanup somehow
     print("Quitting...")
