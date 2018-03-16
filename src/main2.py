@@ -56,7 +56,7 @@ class Consumer(threading.Thread):
 
 
 class ImageProcessor(threading.Thread):
-    def __init__(self, owner):
+    def __init__(self, owner=None):
         super(ImageProcessor, self).__init__()
         self.stream = io.BytesIO()
         self.event = threading.Event()
@@ -73,12 +73,13 @@ class ImageProcessor(threading.Thread):
                     self.stream.seek(0)
                     # Read the image and do some processing on it
                     #Image.open(self.stream)
-                    with self.owner.lock:
-                        idx = self.owner.frames_processed
-                        self.owner.frames_processed += 1
+                    if self.owner is not None:
+                        with self.owner.lock:
+                            idx = self.owner.frames_processed
+                            self.owner.frames_processed += 1
 
                     image = cv2.imdecode(np.fromstring(self.stream.getvalue(),
-                                                       dtype=np.uint8), cv2.IMREAD_COLOR)
+                                                       dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
 
                     sources, _ = detect.find_source(image)
 
@@ -90,9 +91,10 @@ class ImageProcessor(threading.Thread):
                         coord = (-1, -1)
                     #print("Found coordinate for frame {0}: {1}".format(idx, coord))
 
-                    if coord != (-1, -1):
-                        with self.owner.lock:
-                            self.owner.frames_detected += 1
+                    if self.owner is not None:
+                        if coord != (-1, -1):
+                            with self.owner.lock:
+                                self.owner.frames_detected += 1
 
                     with result_lock:
                         result_table[idx] = coord
@@ -108,8 +110,9 @@ class ImageProcessor(threading.Thread):
                     self.stream.truncate()
                     self.event.clear()
                     # Return ourselves to the available pool
-                    with self.owner.lock:
-                        self.owner.pool.append(self)
+                    if self.owner is not None:
+                        with self.owner.lock:
+                            self.owner.pool.append(self)
 
 
 class ProcessOutput(object):
@@ -183,7 +186,29 @@ def calibrate(camera):
     coords = []
     # Calibration - let the user grab 4 coordinates 
     # U press keyboard to take pic
+
+    stream = BytesIO()
+
     dirs = ["TOP LEFT", "TOP RIGHT", "BOT RIGHT", "BOT LEFT"]
+    for direction in dirs:
+        coord_found = False
+        print('Please point your device towards %s corner of the screen' % direction)
+        # Continuously capture frame until a coordinate is detected
+        while coord_found:
+            camera.capture(stream, format='jpeg')
+            image = cv2.imdecode(np.fromstring(stream.getvalue(),
+                                               dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+            sources, _ = detect.find_source(image)
+            if len(sources) != 0:
+                (x0, y0), (x1, y1) = sources[0]
+                coord, _ = detect.find_coordinate(image[y0:y1, x0:x1])
+                coord = (coord[0] + x0, coord[1] + y0)
+                coords.append(coord)
+                print('%s: %s' % (direction, coord))
+                coord_found = True
+        time.sleep(1)
+
+    '''  
     for i in range(len(dirs)):
         print("Taking {0} calibration picture. Press keyboard when ready.".format(dirs[i]))
         #camera.start_preview()
@@ -192,7 +217,7 @@ def calibrate(camera):
         camera.capture(stream, format='jpeg')
         stream.seek(0)
         image = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 
-            cv2.IMREAD_COLOR)
+            cv2.IMREAD_GRAYSCALE)
         sources, _ = detect.find_source(image)
 
         if len(sources) != 0:
@@ -205,9 +230,9 @@ def calibrate(camera):
             sys.exit("Re-calibration necessary!")
         
         coords.append(coord)
-        return coords
         #camera.stop_preview()
-
+    '''
+    return coords
 
 with picamera.PiCamera(sensor_mode=5) as camera_pi:
     # Capture grayscale image instead of colour
