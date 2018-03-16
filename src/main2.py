@@ -20,7 +20,7 @@ dr = dbr.DebugRenderer()
 #calib_coords gets populated during calibration
 #stored in this order: L0(x=0,y=0),L1(0,1), L2(1,1), L3(1,0)
 #algorithm from: https://math.stackexchange.com/questions/13404/mapping-irregular-quadrilateral-to-a-rectangle/1361366#1361366
-calib_coords = []
+#calib_coords = []
 warp_matrix = None
 
 def to_normalized_screen_coords(raw_coord):
@@ -171,7 +171,7 @@ class CameraThread(threading.Thread):
         camera.stop_recording()
 
 def calibrate(camera):
-    global calib_coords
+    calib_coords = []
     # Calibration - let the user grab 4 coordinates 
     # U press keyboard to take pic
     dirs = ["TOP LEFT", "TOP RIGHT", "BOT RIGHT", "BOT LEFT"]
@@ -196,6 +196,7 @@ def calibrate(camera):
             sys.exit("Re-calibration necessary!")
         
         calib_coords.append(coord)
+        return calib_coords
         #camera.stop_preview()
 
 with picamera.PiCamera(sensor_mode=5) as camera:
@@ -210,7 +211,7 @@ with picamera.PiCamera(sensor_mode=5) as camera:
         calib_coords = cs.read_calib()
     else:
         dr.show_calib_img()
-        calibrate(camera)
+        calib_coords = calibrate(camera)
         answer = input("Save this calibration data? [y/n]:")
         if answer == "y" or answer == "Y":
             cs.save_calib(calib_coords)
