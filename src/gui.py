@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 
-OFFSET_BETWEEN_WIDGETS = 5
+OFFSET_BETWEEN_WIDGETS = 10
 
 '''
 class InputFieldWidget(QWidget):
@@ -101,6 +101,43 @@ class Slider(QSlider):
             new_value = self.descale(scaled_value)
             self.parent().on_edit(self, new_value)
 
+class PopUp(QDialog):
+    def __init__(self, title, text, yn, pos=None, parent=None):
+        super().__init__(parent=parent)
+        self.setWindowTitle(title)
+        label = QLabel(text, parent=self)
+        label.move(QPoint(20, 20))
+        label.adjustSize()
+
+        button_size=QSize(60, 20)
+        button_pos_y = label.pos().y() + label.height() + OFFSET_BETWEEN_WIDGETS
+        if yn:
+            # This popup should return a yes/no response
+            button_yes = QPushButton('Yes', parent=self)
+            button_yes.clicked.connect(self.yes)
+            button_yes.resize(button_size)
+            button_yes_pos = QPoint(label.pos().x() + (label.width() - OFFSET_BETWEEN_WIDGETS) // 2 - button_size.width(),
+                                    button_pos_y)
+            button_yes.move(button_yes_pos)
+            button_no = QPushButton('No', parent=self)
+            button_no.clicked.connect(self.no)
+            button_no.resize(button_size)
+            button_no_pos = QPoint(label.pos().x() + (label.width() + OFFSET_BETWEEN_WIDGETS) // 2, button_pos_y)
+            button_no.move(button_no_pos)
+        else:
+            # This popup doesn't require a response
+            button_ok = QPushButton('Ok', parent=self)
+            button_ok.clicked.connect(self.done)
+            button_ok.resize(button_size)
+            button_ok_pos = QPoint(label.pos().x() + (label.width() - button_size.width()) // 2, button_pos_y)
+            button_ok.move(button_ok_pos)
+
+    def yes(self):
+        self.done(QDialog.Accepted)
+
+    def no(self):
+        self.done(QDialog.Rejected)
+
 
 class App(QDialog):
     def __init__(self, title, pos=None, parent=None):
@@ -160,10 +197,15 @@ class App(QDialog):
     def get_widget(self, name):
         return self.__widgets[name]
 
+    def popup(self, text, yn=False):
+        popup = PopUp('Warning', text, yn)
+        return popup.exec()
+
 
 class MainApp(App):
     def __init__(self, title, dict_settings=None, pos=None, parent=None):
         super().__init__(title, pos=pos, parent=parent)
+        self.__is_calibrated = False
         if dict_settings is not None:
             self.__dict_settings = dict_settings
         else:
@@ -177,7 +219,7 @@ class MainApp(App):
                                     'CD_BRIGHT_PERCENTILE': 50,
                                     'CD_COORD_WEIGHT': 0.5}
 
-        self.add_push_button(name='RECALIBRATE', label='Recalibrate', on_click=self.calibrate,
+        self.add_push_button(name='RECALIBRATE', label='Calibrate', on_click=self.calibrate,
                              pos=QPoint(20, 20), size=QSize(100, 30))
         self.add_push_button(name='ACTIVATE', label='Start', on_click=self.activate,
                              pos=QPoint(20, 60), size=QSize(100, 30))
@@ -193,9 +235,17 @@ class MainApp(App):
 
     def calibrate(self):
         # TODO: integrate calibration implementation
+        self.__is_calibrated = True
+        self.get_widget('RECALIBRATE').setText('Recalibrate')
         pass
 
     def activate(self):
+        if not self.__is_calibrated:
+            yn = self.popup('The camera hasn\'t been calibrated yet. Would you like to calibrate now?', yn=True)
+            if yn == QDialog.Accepted:
+                self.calibrate()
+            else:
+                return
         # TODO: integrate processing framework
         pass
 
@@ -256,16 +306,9 @@ class SettingsApp(App):
                     param_value = float(param_text)
                 self.dict_settings[param_name] = param_value
             else:
-                popup = QDialog()
-                popup.setWindowTitle('Warning')
-                label = QLabel('Some of the parameters\' value does not fit within the specified range.'
-                               '\nPlease check the values again.', parent=popup)
-                label.move(QPoint(20, 20))
-                label.adjustSize()
-                button = QPushButton('Ok', parent=popup)
-                button.clicked.connect(popup.done)
-                button.move(QPoint(200, 70))
-                popup.exec()
+                self.popup('Some of the parameters\' value does not fit within the specified range.'
+                           '\nPlease check the values again.',
+                           yn=False)
                 return
         self.done(QDialog.Accepted)
 
