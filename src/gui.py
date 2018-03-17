@@ -103,8 +103,8 @@ class Slider(QSlider):
 
 
 class App(QDialog):
-    def __init__(self, title, pos=None):
-        super().__init__()
+    def __init__(self, title, pos=None, parent=None):
+        super().__init__(parent=parent)
         self.__widgets = {}
 
         self.setWindowTitle(title)
@@ -160,60 +160,121 @@ class App(QDialog):
     def get_widget(self, name):
         return self.__widgets[name]
 
-    def refresh_app(self):
-        self.show()
 
+class MainApp(App):
+    def __init__(self, title, dict_settings=None, pos=None, parent=None):
+        super().__init__(title, pos=pos, parent=parent)
+        if dict_settings is not None:
+            self.__dict_settings = dict_settings
+        else:
+            self.__dict_settings = {'RC_NUM_FRAMES': 10,
+                                    'RC_RADIUS': 25,
+                                    'MAX_FPS': 20,
+                                    'MAX_THREAD': 6,
+                                    'BLUR_SIZE': 5,
+                                    'SD_BRIGHT_THRESHOLD': 40,
+                                    'CD_BRIGHT_THRESHOLD': 30,
+                                    'CD_BRIGHT_PERCENTILE': 50,
+                                    'CD_COORD_WEIGHT': 0.5}
+
+        self.add_push_button(name='RECALIBRATE', label='Recalibrate', on_click=self.calibrate,
+                             pos=QPoint(20, 20), size=QSize(100, 30))
+        self.add_push_button(name='ACTIVATE', label='Start', on_click=self.activate,
+                             pos=QPoint(20, 60), size=QSize(100, 30))
+        self.add_push_button(name='OPEN_SETTINGS', label='Settings', on_click=self.show_settings,
+                             pos=QPoint(20, 100), size=QSize(100, 30))
+    
+    def show_settings(self):
+        dialog_setting = SettingsApp('Settings', self.__dict_settings, parent=self)
+        ret = dialog_setting.exec()
+        if ret == QDialog.Accepted:
+            self.__dict_settings = dialog_setting.dict_settings
+            #print(dialog_setting.dict_settings)
+
+    def calibrate(self):
+        # TODO: integrate calibration implementation
+        pass
+
+    def activate(self):
+        # TODO: integrate processing framework
+        pass
+
+
+class SettingsApp(App):
+    def __init__(self, title, dict_settings, pos=None, parent=None):
+        super().__init__(title, pos, parent)
+        self.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
+        self.dict_settings = dict_settings
+        # Parameters for right click register
+        self.add_input_field(name='RC_NUM_FRAMES', label='Duration of frames for right click',
+                             pos=QPoint(20, 20), valid_range=(3, 20), 
+                             contents=str(self.dict_settings['RC_NUM_FRAMES']),
+                             tooltip='Holding the pointer for this many frames will register as right click')
+        self.add_input_field(name='RC_RADIUS', label='Radius in pixels for right click',
+                             pos=QPoint(20, 50), valid_range=(5, 50), contents=str(self.dict_settings['RC_RADIUS']),
+                             tooltip='Holding the pointer within this radius will register as right click')
+        # Parameters for performance restriction
+        self.add_input_field(name='MAX_FPS', label='Maximum fps to process', pos=QPoint(20, 100),
+                             valid_range=(15, 30), contents=str(self.dict_settings['MAX_FPS']),
+                             tooltip='Lower fps may result in less responsive behaviour, '
+                                     'but will limit required processing power')
+        self.add_input_field(name='MAX_THREAD', label='Number of concurrent threads', pos=QPoint(20, 130),
+                             valid_range=(1, 12), contents=str(self.dict_settings['MAX_THREAD']),
+                             tooltip='Less threads may result in less responsive behaviour, '
+                                     'but will limit required processing power')
+        # Parameters for core detection algorithm
+        self.add_input_field(name='BLUR_SIZE', label='Mask size of Gaussian blur', pos=QPoint(20, 180),
+                             valid_range=(3, 11), contents=str(self.dict_settings['BLUR_SIZE']))
+        self.add_input_field(name='SD_BRIGHT_THRESHOLD',
+                             label='Brightness threshold for source detection',
+                             pos=QPoint(20, 210), valid_range=(20, 60),
+                             contents=str(self.dict_settings['SD_BRIGHT_THRESHOLD']))
+        self.add_input_field(name='CD_BRIGHT_THRESHOLD',
+                             label='Brightness threshold for coordinate detection',
+                             pos=QPoint(20, 240), valid_range=(20, 60),
+                             contents=str(self.dict_settings['CD_BRIGHT_THRESHOLD']))
+        self.add_input_field(name='CD_BRIGHT_PERCENTILE',
+                             label='Brightness percentile for coordinate detection',
+                             pos=QPoint(20, 270), valid_range=(20, 100),
+                             contents=str(self.dict_settings['CD_BRIGHT_PERCENTILE']))
+        self.add_input_field(name='CD_COORD_WEIGHT',
+                             label='Weight of brightest point to compute projection coordinate',
+                             pos=QPoint(20, 300), valid_range=(0.0, 1.0), decimal=2,
+                             contents=str(self.dict_settings['CD_COORD_WEIGHT']))
+        self.add_push_button(name='EXIT_SAVE', label='Save', on_click=self.save_on_exit, pos=QPoint(200, 350))
+        self.add_push_button(name='EXIT_CANCEL', label='Cancel', on_click=self.cancel_on_exit, pos=QPoint(270, 350))
+
+    def save_on_exit(self):
+        # Save each parameter's value into dict - retrieved by main app
+        for param_name in self.dict_settings.keys():
+            param_widget = self.get_widget(param_name + '_FIELD')
+            is_valid, param_text, _ = param_widget.validator().validate(param_widget.text(), 0)
+            if is_valid == QValidator.Acceptable:
+                try:
+                    param_value = int(param_text)
+                except ValueError:
+                    param_value = float(param_text)
+                self.dict_settings[param_name] = param_value
+            else:
+                popup = QDialog()
+                popup.setWindowTitle('Warning')
+                label = QLabel('Some of the parameters\' value does not fit within the specified range.'
+                               '\nPlease check the values again.', parent=popup)
+                label.move(QPoint(20, 20))
+                label.adjustSize()
+                button = QPushButton('Ok', parent=popup)
+                button.clicked.connect(popup.done)
+                button.move(QPoint(200, 70))
+                popup.exec()
+                return
+        self.done(QDialog.Accepted)
+
+    def cancel_on_exit(self):
+        self.done(QDialog.Rejected)
+        
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    app_main = App('LhiteBoard')
-
-    app_setting = App('Settings')
-    dict_setting = {'RC_NUM_FRAMES': 10,
-                    'RC_RADIUS': 25,
-                    'MAX_FPS': 20,
-                    'MAX_THREAD': 6,
-                    'BLUR_SIZE': 5,
-                    'SD_BRIGHT_THRESHOLD': 40,
-                    'CD_BRIGHT_THRESHOLD': 30,
-                    'CD_BRIGHT_PERCENTILE': 50,
-                    'CD_COORD_WEIGHT': 0.5}
-    # Parameters for right click register
-    app_setting.add_input_field(name='RC_NUM_FRAMES', label='Duration of frames for right click',
-                                pos=QPoint(20, 20), valid_range=(3, 20), contents=str(dict_setting['RC_NUM_FRAMES']),
-                                tooltip='Holding the pointer at a location for '
-                                        'this many frames will register as right click')
-    app_setting.add_input_field(name='RC_RADIUS', label='Radius in pixels for right click',
-                                pos=QPoint(20, 50), valid_range=(5, 50), contents=str(dict_setting['RC_RADIUS']),
-                                tooltip='Holding the pointer at a location within '
-                                        'this radius will register as right click')
-    # Parameters for performance restriction
-    app_setting.add_input_field(name='MAX_FPS', label='Maximum fps to process', pos=QPoint(20, 100),
-                                valid_range=(15, 30), contents=str(dict_setting['MAX_FPS']),
-                                tooltip='Lower fps may result in less responsive behaviour, '
-                                        'but will limit required processing power')
-    app_setting.add_input_field(name='MAX_THREAD', label='Number of concurrent threads', pos=QPoint(20, 130),
-                                valid_range=(1, 12), contents=str(dict_setting['MAX_THREAD']),
-                                tooltip='Less threads may result in less responsive behaviour, '
-                                        'but will limit required processing power')
-    # Parameters for core detection algorithm
-    app_setting.add_input_field(name='BLUR_SIZE', label='Mask size of Gaussian blur', pos=QPoint(20, 180),
-                                valid_range=(3, 11), contents=str(dict_setting['BLUR_SIZE']))
-    app_setting.add_input_field(name='SD_BRIGHT_THRESHOLD',
-                                label='Brightness threshold for source detection',
-                                pos=QPoint(20, 210), valid_range=(20, 60),
-                                contents=str(dict_setting['SD_BRIGHT_THRESHOLD']))
-    app_setting.add_input_field(name='CD_BRIGHT_THRESHOLD',
-                                label='Brightness threshold for coordinate detection',
-                                pos=QPoint(20, 240), valid_range=(20, 60),
-                                contents=str(dict_setting['CD_BRIGHT_THRESHOLD']))
-    app_setting.add_input_field(name='CD_BRIGHT_PERCENTILE',
-                                label='Brightness percentile for coordinate detection',
-                                pos=QPoint(20, 270), valid_range=(20, 100),
-                                contents=str(dict_setting['CD_BRIGHT_PERCENTILE']))
-    app_setting.add_input_field(name='CD_COORD_WEIGHT',
-                                label='Weight of brightest point to compute projection coordinate',
-                                pos=QPoint(20, 300), valid_range=(0.0, 1.0), decimal=2,
-                                contents=str(dict_setting['CD_COORD_WEIGHT']))
-    app_setting.refresh_app()
+    app_main = MainApp('LhiteBoard')
+    app_main.show()
     sys.exit(app.exec_())
