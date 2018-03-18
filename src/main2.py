@@ -207,7 +207,6 @@ def calibrate(camera, offset=0):
             image = cv2.imdecode(np.fromstring(stream.getvalue(),
                                                dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
             sources, _ = detect.find_source(image)
-            cv2.imshow('source', image)
             print(sources)
             if len(sources) != 0:
                 (x0, y0), (x1, y1) = sources[0]
@@ -286,6 +285,7 @@ if __name__ == '__main__':
             [WIDTH-dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER],
             [dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER]])
         warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
+        print(warp_matrix)
 
         # actually start our threads now
         process_output = ProcessOutput()

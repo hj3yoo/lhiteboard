@@ -7,3 +7,5 @@ src/test/__pycache__/*.pyc
 src/*.png
 src/*.jpg
 src/*.jpb
+src/*.txt
+

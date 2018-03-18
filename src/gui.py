@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 import picamera
+import cv2
 from main2 import *
 
 OFFSET_BETWEEN_WIDGETS = 10
@@ -208,6 +209,7 @@ class App(QDialog):
 class MainApp(App):
     def __init__(self, title, dict_settings=None, pos=None, parent=None):
         super().__init__(title, pos=pos, parent=parent)
+        self.__calib_offset = 0
         self.__warp_matrix = None
 
         if dict_settings is not None:
@@ -222,7 +224,6 @@ class MainApp(App):
                                     'CD_BRIGHT_THRESHOLD': 30,
                                     'CD_BRIGHT_PERCENTILE': 50,
                                     'CD_COORD_WEIGHT': 0.5,
-                                    'CALIB_OFFSET': 0
                                     }
 
         self.add_push_button(name='RECALIBRATE', label='Calibrate', on_click=self.calibrate,
@@ -248,7 +249,7 @@ class MainApp(App):
         screen_height = 600
 
         # TODO: integrate calibration implementation
-        offset = self.__dict_settings['CALIB_OFFSET']
+        offset = self.__calib_offset
         calib_coords = calibrate(self.__camera, offset=offset)
         if calib_coords is not None:
             # Calculate transformation matrix to convert from calibration coordinates to screen coordinates
@@ -266,18 +267,23 @@ class MainApp(App):
             ])
             self.__warp_matrix = cv2.getPerspectiveTransform(np_calib_coords, np_screen_coords)
             self.get_widget('RECALIBRATE').setText('Recalibrate')
+            print(self.__warp_matrix)
         else:
             self.popup('Calibration failed. Please try again.')
 
 
-    def activate(self):
-        if self.__calib_coords is None:
+    def activate(self):      
+        if self.__warp_matrix is None:
             yn = self.popup('The camera hasn\'t been calibrated yet. Would you like to calibrate now?', yn=True)
             if yn == QDialog.Accepted:
                 self.calibrate()
             else:
                 return
         # TODO: integrate processing framework
+        process_output = ProcessOutput()
+        consumer = Consumer()
+        dr.show_clear()	
+        cam_thread = CameraThread(self.__camera_pi, process_output)
         pass
 
 
