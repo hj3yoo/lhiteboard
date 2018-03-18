@@ -52,6 +52,15 @@ class Consumer(threading.Thread):
                         nsc = to_normalized_screen_coords(get)
                         print("---> NSC: {0}".format(nsc))
                         dr.push_point_mt(nsc[0], nsc[1])
+                        # TODO Eduard: We need to translate coordinate to mouse movement
+                        # Sadly, xdotool script isn't doing the job with how things are
+                        # set up right now. I need you to find python API that can do
+                        # the mouse movement and clicks, and implement them.
+                        
+                        # This call won't work - It will crash your whole thing down.
+                        # It may corrupt your local repo as well :/
+                        # Feel free to try, but you are warned.
+                        #call(["xdotool", "mousemove", str(x), str(y)])
                     self.i += 1
 
 
@@ -65,6 +74,18 @@ class ImageProcessor(threading.Thread):
         self.start()
 
     def run(self):
+        # TODO Eduard: To make sure that our board doesn't burn down during symposium,
+        # We need to limit the amount of processing power the detection consumes.
+        # This is also a good way to ensure that whatever application we run with this
+        # doesn't starve with resources.
+        # The easiest way to do this is to limit the maximum fps this will process.
+        # To do this, I want you to create a semaphore-equivalent that releases every
+        # 1/n seconds (for the maximum of n fps). Each ImageProcessor will compete to
+        # acquire the semaphore on a periodic polling with small delay (say, 2ms).
+        # Whichever thread that acquires the semaphore will start processing th
+        # currently available frame. This ensures that each processed frames are
+        # relatively evenly separated in time.
+        
         # This method runs in a separate thread
         while not self.terminated:
             # Wait for an image to be written to the stream
