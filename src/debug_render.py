@@ -2,6 +2,7 @@ from tkinter import *
 import queue
 import _thread
 import time
+import mouse_emitter
 
 POINT_WIDTH=10
 POINT_HEIGHT=10
@@ -19,7 +20,7 @@ class DebugRenderer():
         self.canvas.config(background="teal")
         self.canvas.pack()
         self.queue = queue.Queue()
-        self.cp = []
+        self.move_mouse = False
 
     def show_calib_img(self):
         radius = 100
@@ -61,10 +62,11 @@ class DebugRenderer():
                 coord = self.queue.get_nowait()
                 if coord is not None:
                     self.show_point(coord[0], coord[1])
+                    if self.move_mouse:
+                        mouse_emitter.mouse_move(coord[0], coord[1])
         except queue.Empty:
             pass
         time.sleep(UPDATE_DELAY_SEC)
-
 
     def show_point(self, x, y, radius=POINT_WIDTH, transform=True):
         """

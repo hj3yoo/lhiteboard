@@ -123,10 +123,10 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False
     _, contours, _ = cv2.findContours(img_thresh, 1, 2)
     boxes = [cv2.boundingRect(cont) for cont in contours]
     for x, y, w, h in boxes:
-        x0 = int(x - w * neighbour_ratio / 2)
-        x1 = int(x + w * (1 + neighbour_ratio / 2))
-        y0 = int(y - h * neighbour_ratio / 2)
-        y1 = int(y + h * (1 + neighbour_ratio / 2))
+        x0 = max(0, int(x - w * neighbour_ratio / 2))
+        x1 = min(img.shape[0], int(x + w * (1 + neighbour_ratio / 2)))
+        y0 = max(0, int(y - h * neighbour_ratio / 2))
+        y1 = min(img.shape[0], int(y + h * (1 + neighbour_ratio / 2)))
         ret.append(((x0, y0), (x1, y1)))
         '''
         #if debug:

@@ -10,6 +10,7 @@ import debug_render as dbr
 import calib_save as cs
 import signal
 import sys
+import mouse_emitter
 
 import detect
 
@@ -21,12 +22,10 @@ result_lock = threading.Lock()
 result_table = {}
 dr = dbr.DebugRenderer()
 
-#calib_coords gets populated during calibration
-#stored in this order: L0(x=0,y=0),L1(0,1), L2(1,1), L3(1,0)
-#algorithm from: https://math.stackexchange.com/questions/13404/mapping-irregular-quadrilateral-to-a-rectangle/1361366#1361366
-#calib_coords = []
-warp_matrix = None
+mouse_emitter.init()
+dr.move_mouse = True
 
+warp_matrix = None
 
 def to_normalized_screen_coords(raw_coord):
     np_raw = np.float32([raw_coord[0], raw_coord[1], 1.0])
@@ -249,30 +248,6 @@ def calibrate(camera, offset=0):
         calib_coords.append(average_coord)
         time.sleep(2)
     #camera.stop_preview()
-    '''  
-    for i in range(len(dirs)):
-        print("Taking {0} calibration picture. Press keyboard when ready.".format(dirs[i]))
-        #camera.start_preview()
-        sys.stdin.readline()
-        stream = BytesIO() 
-        camera.capture(stream, format='jpeg')
-        stream.seek(0)
-        image = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), 
-            cv2.IMREAD_GRAYSCALE)
-        sources, _ = detect.find_source(image)
-
-        if len(sources) != 0:
-            print(sources)
-            (x0, y0), (x1, y1) = sources[0]
-            coord, _ = detect.find_coordinate(image[y0:y1, x0:x1])
-            print(coord)
-            coord = (coord[0] + x0, coord[1] + y0)
-        else:
-            sys.exit("Re-calibration necessary!")
-        
-        coords.append(coord)
-        #camera.stop_preview()
-    '''
     return calib_coords
 
 
