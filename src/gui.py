@@ -2,6 +2,8 @@ import sys
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
+import picamera
+from main2 import *
 
 OFFSET_BETWEEN_WIDGETS = 10
 
@@ -100,6 +102,7 @@ class Slider(QSlider):
             print(scaled_value)
             new_value = self.descale(scaled_value)
             self.parent().on_edit(self, new_value)
+
 
 class PopUp(QDialog):
     def __init__(self, title, text, yn, pos=None, parent=None):
@@ -205,7 +208,8 @@ class App(QDialog):
 class MainApp(App):
     def __init__(self, title, dict_settings=None, pos=None, parent=None):
         super().__init__(title, pos=pos, parent=parent)
-        self.__is_calibrated = False
+        self.__warp_matrix = None
+
         if dict_settings is not None:
             self.__dict_settings = dict_settings
         else:
@@ -217,7 +221,9 @@ class MainApp(App):
                                     'SD_BRIGHT_THRESHOLD': 40,
                                     'CD_BRIGHT_THRESHOLD': 30,
                                     'CD_BRIGHT_PERCENTILE': 50,
-                                    'CD_COORD_WEIGHT': 0.5}
+                                    'CD_COORD_WEIGHT': 0.5,
+                                    'CALIB_OFFSET': 0
+                                    }
 
         self.add_push_button(name='RECALIBRATE', label='Calibrate', on_click=self.calibrate,
                              pos=QPoint(20, 20), size=QSize(100, 30))
@@ -225,22 +231,47 @@ class MainApp(App):
                              pos=QPoint(20, 60), size=QSize(100, 30))
         self.add_push_button(name='OPEN_SETTINGS', label='Settings', on_click=self.show_settings,
                              pos=QPoint(20, 100), size=QSize(100, 30))
+
+        # Initialize picamera
+        self.__camera = picamera.PiCamera(sensor_mode=5)
+        self.__camera.color_effects = (128, 128)  # Grayscale
     
     def show_settings(self):
         dialog_setting = SettingsApp('Settings', self.__dict_settings, parent=self)
         ret = dialog_setting.exec()
         if ret == QDialog.Accepted:
             self.__dict_settings = dialog_setting.dict_settings
-            #print(dialog_setting.dict_settings)
 
     def calibrate(self):
+        # TODO: grab screen resolution
+        screen_width = 800
+        screen_height = 600
+
         # TODO: integrate calibration implementation
-        self.__is_calibrated = True
-        self.get_widget('RECALIBRATE').setText('Recalibrate')
-        pass
+        offset = self.__dict_settings['CALIB_OFFSET']
+        calib_coords = calibrate(self.__camera, offset=offset)
+        if calib_coords is not None:
+            # Calculate transformation matrix to convert from calibration coordinates to screen coordinates
+            np_calib_coords = np.float32([
+                [calib_coords[0][0], calib_coords[0][1]],
+                [calib_coords[1][0], calib_coords[1][1]],
+                [calib_coords[2][0], calib_coords[2][1]],
+                [calib_coords[3][0], calib_coords[3][1]]
+            ])
+            np_screen_coords = np.float32([
+                [offset, offset],                                   # Top Left
+                [screen_width - offset, offset],                    # Top Right
+                [screen_width - offset, screen_height - offset],    # Bottom Right
+                [offset, screen_height - offset]                    # Bottom Left
+            ])
+            self.__warp_matrix = cv2.getPerspectiveTransform(np_calib_coords, np_screen_coords)
+            self.get_widget('RECALIBRATE').setText('Recalibrate')
+        else:
+            self.popup('Calibration failed. Please try again.')
+
 
     def activate(self):
-        if not self.__is_calibrated:
+        if self.__calib_coords is None:
             yn = self.popup('The camera hasn\'t been calibrated yet. Would you like to calibrate now?', yn=True)
             if yn == QDialog.Accepted:
                 self.calibrate()

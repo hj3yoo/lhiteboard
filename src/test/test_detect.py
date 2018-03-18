@@ -1,4 +1,4 @@
-from src.detect import *
+from detect import *
 import argparse
 import os
 import sys

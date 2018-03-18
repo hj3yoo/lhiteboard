@@ -182,7 +182,7 @@ class CameraThread(threading.Thread):
         camera_pi.stop_recording()
 
 
-def calibrate(camera):
+def calibrate(camera, offset=0):
     calib_coords = []
     # Calibration - let the user grab 4 coordinates 
     # U press keyboard to take pic
@@ -201,7 +201,7 @@ def calibrate(camera):
         dr.show_point(expected_coord[0], expected_coord[1], radius=25, transform=False)
         print('Please point your device towards %s corner of the screen' % direction)
         # Continuously capture frame until a coordinate is detected
-        while num_coord_found < 3:
+        while num_coord_found < 5:
             camera.capture(stream, format='jpeg')
             stream.seek(0)
             image = cv2.imdecode(np.fromstring(stream.getvalue(),
@@ -218,6 +218,8 @@ def calibrate(camera):
                     coords.append(coord)
                     print('%s: %s' % (direction, coord))
                     num_coord_found += 1
+            # TODO: check if all coordinates are relatively close to each other
+            pass
         average_x = 0
         average_y = 0
         for x, y in coords:
@@ -225,7 +227,7 @@ def calibrate(camera):
             average_y += y
         average_coord = (average_x / len(coords), average_y / len(coords))
         calib_coords.append(average_coord)
-        time.sleep(1)
+        time.sleep(2)
     #camera.stop_preview()
     '''  
     for i in range(len(dirs)):
@@ -253,58 +255,60 @@ def calibrate(camera):
     '''
     return calib_coords
 
-with picamera.PiCamera(sensor_mode=5) as camera_pi:
-    # Capture grayscale image instead of colour
-    camera_pi.color_effects = (128, 128)
 
-    #camera_pi.start_preview() #This outputs the video full-screen in real time
-    time.sleep(2)
+if __name__ == '__main__':
+    with picamera.PiCamera(sensor_mode=5) as camera_pi:
+        # Capture grayscale image instead of colour
+        camera_pi.color_effects = (128, 128)
 
-    answer = input("Do you want to use the saved calibration data? [y/n]:")
-    if answer == "y" or answer == "Y":
-        calib_coords = cs.read_calib()
-    else:
-        #dr.show_calib_img()
-        calib_coords = calibrate(camera_pi)
-        answer = input("Save this calibration data? [y/n]:")
+        #camera_pi.start_preview() #This outputs the video full-screen in real time
+        time.sleep(2)
+
+        answer = input("Do you want to use the saved calibration data? [y/n]:")
         if answer == "y" or answer == "Y":
-            cs.save_calib(calib_coords)
+            calib_coords = cs.read_calib()
+        else:
+            #dr.show_calib_img()
+            calib_coords = calibrate(camera_pi)
+            answer = input("Save this calibration data? [y/n]:")
+            if answer == "y" or answer == "Y":
+                cs.save_calib(calib_coords)
 
-    print("Calibration coordinates: {0}".format(calib_coords))
-    np_calib_points = np.float32([
-        [calib_coords[0][0], calib_coords[0][1]], 
-        [calib_coords[1][0], calib_coords[1][1]], 
-        [calib_coords[2][0], calib_coords[2][1]], 
-        [calib_coords[3][0], calib_coords[3][1]]
-    ])
-    np_warped_points = np.float32([[dbr.CALIB_BORDER, dbr.CALIB_BORDER], 
-        [WIDTH-dbr.CALIB_BORDER, dbr.CALIB_BORDER],
-        [WIDTH-dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER],
-        [dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER]])
-    warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
+        print("Calibration coordinates: {0}".format(calib_coords))
+        np_calib_points = np.float32([
+            [calib_coords[0][0], calib_coords[0][1]],
+            [calib_coords[1][0], calib_coords[1][1]],
+            [calib_coords[2][0], calib_coords[2][1]],
+            [calib_coords[3][0], calib_coords[3][1]]
+        ])
+        np_warped_points = np.float32([[dbr.CALIB_BORDER, dbr.CALIB_BORDER],
+            [WIDTH-dbr.CALIB_BORDER, dbr.CALIB_BORDER],
+            [WIDTH-dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER],
+            [dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER]])
+        warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
 
-    # actually start our threads now    
-    process_output = ProcessOutput()
-    consumer = Consumer()
-    time_begin = time.time()
-    dr.show_clear()
+        # actually start our threads now
+        process_output = ProcessOutput()
+        consumer = Consumer()
+        time_begin = time.time()
+        dr.show_clear()
 
-    def signal_handler(signal, frame):
-        time_now = time.time()
-        fps = process_output.frames_processed / (time_now - time_begin)
-        dropped_percent = process_output.frames_dropped / (process_output.frames_dropped
-                                                   + process_output.frames_processed) * 100.0
-        detected_percent = process_output.frames_detected / process_output.frames_processed * 100.0
-        print("Average FPS thus far: {0}".format(fps))  
-        print("Avg. % of frames dropped: {0}".format(dropped_percent))
-        print("Detected percent: {0}".format(detected_percent))
-    signal.signal(signal.SIGQUIT, signal_handler)
+        def signal_handler(signal, frame):
+            time_now = time.time()
+            fps = process_output.frames_processed / (time_now - time_begin)
+            dropped_percent = process_output.frames_dropped / (process_output.frames_dropped
+                                                       + process_output.frames_processed) * 100.0
+            detected_percent = process_output.frames_detected / process_output.frames_processed * 100.0
+            print("Average FPS thus far: {0}".format(fps))
+            print("Avg. % of frames dropped: {0}".format(dropped_percent))
+            print("Detected percent: {0}".format(detected_percent))
+        signal.signal(signal.SIGQUIT, signal_handler)
 
-    cam_thread = CameraThread(camera_pi, process_output)
-    dr.mainloop() 
+        cam_thread = CameraThread(camera_pi, process_output)
+        dr.mainloop()
 
-    # TODO actual cleanup somehow
-    print("Quitting...")
+        # TODO actual cleanup somehow
+        print("Quitting...")
 
 
 
