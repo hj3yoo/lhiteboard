@@ -51,15 +51,6 @@ class Consumer(threading.Thread):
                         nsc = to_normalized_screen_coords(get)
                         print("---> NSC: {0}".format(nsc))
                         dr.push_point_mt(nsc[0], nsc[1])
-                        # TODO Eduard: We need to translate coordinate to mouse movement
-                        # Sadly, xdotool script isn't doing the job with how things are
-                        # set up right now. I need you to find python API that can do
-                        # the mouse movement and clicks, and implement them.
-                        
-                        # This call won't work - It will crash your whole thing down.
-                        # It may corrupt your local repo as well :/
-                        # Feel free to try, but you are warned.
-                        #call(["xdotool", "mousemove", str(x), str(y)])
                     self.i += 1
 
 
@@ -73,18 +64,6 @@ class ImageProcessor(threading.Thread):
         self.start()
 
     def run(self):
-        # TODO Eduard: To make sure that our board doesn't burn down during symposium,
-        # We need to limit the amount of processing power the detection consumes.
-        # This is also a good way to ensure that whatever application we run with this
-        # doesn't starve with resources.
-        # The easiest way to do this is to limit the maximum fps this will process.
-        # To do this, I want you to create a semaphore-equivalent that releases every
-        # 1/n seconds (for the maximum of n fps). Each ImageProcessor will compete to
-        # acquire the semaphore on a periodic polling with small delay (say, 2ms).
-        # Whichever thread that acquires the semaphore will start processing th
-        # currently available frame. This ensures that each processed frames are
-        # relatively evenly separated in time.
-        
         # This method runs in a separate thread
         while not self.terminated:
             # Wait for an image to be written to the stream
@@ -100,12 +79,21 @@ class ImageProcessor(threading.Thread):
 
                     image = cv2.imdecode(np.fromstring(self.stream.getvalue(),
                                                        dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+                    mask = np.zeros_like(image)
+                    if len(image.shape) > 2:
+                        channel_count = image.shape[2]
+                        mask_color = (255,) * channel_count
+                    else:
+                        mask_color = 255
+                    cv2.fillConvexPoly(mask, np_crop_points, mask_color)
+                    image_crop = cv2.bitwise_and(image, mask)
+                    #image_crop = image
 
-                    sources, _ = detect.find_source(image)
+                    sources, _ = detect.find_source(image_crop)
 
                     if len(sources) != 0:
                         (x0, y0), (x1, y1) = sources[0]
-                        coord, _ = detect.find_coordinate(image[y0:y1, x0:x1])
+                        coord, _ = detect.find_coordinate(image_crop[y0:y1, x0:x1])
                         coord = (coord[0] + x0, coord[1] + y0)
                     else:
                         coord = (-1, -1)
@@ -280,6 +268,9 @@ if __name__ == '__main__':
             [WIDTH-dbr.CALIB_BORDER, dbr.CALIB_BORDER],
             [WIDTH-dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER],
             [dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER]])
+
+        # TODO: map 4 corners of the screen with the offset in mind
+        np_crop_points = np.int32(np_calib_points)
         warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
         print(warp_matrix)
 
