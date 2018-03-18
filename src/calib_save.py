@@ -1,5 +1,3 @@
-import os
-
 CALIB_FILENAME="calib.txt"
 
 def save_calib(calib_coords):

@@ -23,7 +23,6 @@ result_table = {}
 dr = dbr.DebugRenderer()
 
 mouse_emitter.init()
-dr.move_mouse = True
 
 warp_matrix = None
 
@@ -252,59 +251,62 @@ def calibrate(camera, offset=0):
 
 
 if __name__ == '__main__':
-    with picamera.PiCamera(sensor_mode=5) as camera_pi:
-        # Capture grayscale image instead of colour
-        camera_pi.color_effects = (128, 128)
+    try:
+        with picamera.PiCamera(sensor_mode=5) as camera_pi:
+            # Capture grayscale image instead of colour
+            camera_pi.color_effects = (128, 128)
 
-        #camera_pi.start_preview() #This outputs the video full-screen in real time
-        time.sleep(2)
+            #camera_pi.start_preview() #This outputs the video full-screen in real time
+            time.sleep(2)
 
-        answer = input("Do you want to use the saved calibration data? [y/n]:")
-        if answer == "y" or answer == "Y":
-            calib_coords = cs.read_calib()
-        else:
-            #dr.show_calib_img()
-            calib_coords = calibrate(camera_pi)
-            answer = input("Save this calibration data? [y/n]:")
+            answer = input("Do you want to use the saved calibration data? [y/n]:")
             if answer == "y" or answer == "Y":
-                cs.save_calib(calib_coords)
+                calib_coords = cs.read_calib()
+            else:
+                #dr.show_calib_img()
+                calib_coords = calibrate(camera_pi)
+                answer = input("Save this calibration data? [y/n]:")
+                if answer == "y" or answer == "Y":
+                    cs.save_calib(calib_coords)
 
-        print("Calibration coordinates: {0}".format(calib_coords))
-        np_calib_points = np.float32([
-            [calib_coords[0][0], calib_coords[0][1]],
-            [calib_coords[1][0], calib_coords[1][1]],
-            [calib_coords[2][0], calib_coords[2][1]],
-            [calib_coords[3][0], calib_coords[3][1]]
-        ])
-        np_warped_points = np.float32([[dbr.CALIB_BORDER, dbr.CALIB_BORDER],
-            [WIDTH-dbr.CALIB_BORDER, dbr.CALIB_BORDER],
-            [WIDTH-dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER],
-            [dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER]])
-        warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
-        print(warp_matrix)
+            print("Calibration coordinates: {0}".format(calib_coords))
+            np_calib_points = np.float32([
+                [calib_coords[0][0], calib_coords[0][1]],
+                [calib_coords[1][0], calib_coords[1][1]],
+                [calib_coords[2][0], calib_coords[2][1]],
+                [calib_coords[3][0], calib_coords[3][1]]
+            ])
+            np_warped_points = np.float32([[dbr.CALIB_BORDER, dbr.CALIB_BORDER],
+                [WIDTH-dbr.CALIB_BORDER, dbr.CALIB_BORDER],
+                [WIDTH-dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER],
+                [dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER]])
+            warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
+            print(warp_matrix)
 
-        # actually start our threads now
-        process_output = ProcessOutput()
-        consumer = Consumer()
-        time_begin = time.time()
-        dr.show_clear()
+            # actually start our threads now
+            process_output = ProcessOutput()
+            consumer = Consumer()
+            time_begin = time.time()
+            dr.show_clear()
 
-        def signal_handler(signal, frame):
-            time_now = time.time()
-            fps = process_output.frames_processed / (time_now - time_begin)
-            dropped_percent = process_output.frames_dropped / (process_output.frames_dropped
-                                                       + process_output.frames_processed) * 100.0
-            detected_percent = process_output.frames_detected / process_output.frames_processed * 100.0
-            print("Average FPS thus far: {0}".format(fps))
-            print("Avg. % of frames dropped: {0}".format(dropped_percent))
-            print("Detected percent: {0}".format(detected_percent))
-        signal.signal(signal.SIGQUIT, signal_handler)
+            def signal_handler(signal, frame):
+                time_now = time.time()
+                fps = process_output.frames_processed / (time_now - time_begin)
+                dropped_percent = process_output.frames_dropped / (process_output.frames_dropped
+                                                           + process_output.frames_processed) * 100.0
+                detected_percent = process_output.frames_detected / process_output.frames_processed * 100.0
+                print("Average FPS thus far: {0}".format(fps))
+                print("Avg. % of frames dropped: {0}".format(dropped_percent))
+                print("Detected percent: {0}".format(detected_percent))
+            signal.signal(signal.SIGQUIT, signal_handler)
 
-        cam_thread = CameraThread(camera_pi, process_output)
-        dr.mainloop()
+            cam_thread = CameraThread(camera_pi, process_output)
+            dr.mainloop()
 
-        # TODO actual cleanup somehow
-        print("Quitting...")
-
+            # TODO actual cleanup somehow
+            print("Quitting...")
+    except Exception as e:
+        print(e)
+        sys.exit(-1)
 
 

@@ -13,14 +13,13 @@ CALIB_BORDER = 0
 class DebugRenderer():
     def __init__(self):
         self.master = Tk()
-        self.master.attributes("-fullscreen", True)
+        #self.master.attributes("-fullscreen", True)
         self.w = self.master.winfo_screenwidth()
         self.h = self.master.winfo_screenheight()
         self.canvas = Canvas(self.master, width=self.w, height=self.h)
         self.canvas.config(background="teal")
         self.canvas.pack()
         self.queue = queue.Queue()
-        self.move_mouse = False
 
     def show_calib_img(self):
         radius = 100
@@ -62,10 +61,11 @@ class DebugRenderer():
                 coord = self.queue.get_nowait()
                 if coord is not None:
                     self.show_point(coord[0], coord[1])
-                    if self.move_mouse:
-                        mouse_emitter.mouse_move(coord[0], coord[1])
+                    #mouse_emitter.mouse_tick(coord[0], coord[1])
+                    mouse_emitter.thread.queue.put(coord)
         except queue.Empty:
-            pass
+            #mouse_emitter.mouse_tick(-1, -1)
+            mouse_emitter.thread.queue.put((-1, -1))
         time.sleep(UPDATE_DELAY_SEC)
 
     def show_point(self, x, y, radius=POINT_WIDTH, transform=True):
