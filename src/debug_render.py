@@ -21,7 +21,7 @@ class DebugRenderer():
         self.canvas.config(background="teal")
         self.canvas.pack()
         self.queue = queue.Queue()
-        self.mouse = mouse_emitter.Mouse(drop_tolerance=0, right_click_thresh=30)
+        self.mouse = mouse_emitter.Mouse(drop_tolerance=2, right_click_duration=30, right_click_dist=15)
         self.mouse_thread = mouse_emitter.MouseThread(self.mouse)
 
     def show_calib_img(self):

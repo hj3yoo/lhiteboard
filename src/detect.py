@@ -41,7 +41,6 @@ def find_coordinate(img, blur_size=5, static_threshold=30, dynamic_threshold=50,
     else:
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     img_blur = cv2.GaussianBlur(img_gray, (blur_size, blur_size), 0)
-    # TODO: Modify threshold value to accommodate both static and dynamic filtering
     # With pixels brighter than static threshold value x (to cancel out noises),
     # Find the top n% bright pixels
     thresh_value = calc_hist_percentile(img, static_threshold, 100 - dynamic_threshold)
@@ -143,7 +142,6 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False
         cv2.imshow('threshold', img_debug_show)
         #cv2.waitKey(0)
 
-    # TODO: Convert to multi-coordinate detection
     # Sorted by the size of the rectangle in descending order
     def get_key(pt):
         return (pt[0][1] - pt[1][1]) * (pt[0][0] - pt[1][0])

@@ -207,7 +207,7 @@ def calibrate(camera, max_dist_thresh, offset=0, subtract_bg=False):
         stream.seek(0)
         image_bg = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
 
-    dirs = ["TOP LEFT", "TOP RIGHT", "BOT RIGHT", "BOT LEFT"]
+    dirs = ["top left", "top right", "bottom right", "bottom left"]
     expected_coords = [(0, 0), (WIDTH, 0), (WIDTH, HEIGHT), (0, HEIGHT)]
     # camera.start_preview()
     for i in range(len(dirs)):
@@ -220,7 +220,6 @@ def calibrate(camera, max_dist_thresh, offset=0, subtract_bg=False):
         print('Please point your device towards %s corner of the screen' % direction)
         # Continuously capture frame until 5 or more coordinates are detected
         while True:
-            print(num_coord_found)
             camera.capture(stream, format='jpeg')
             stream.seek(0)
             image = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
@@ -239,20 +238,14 @@ def calibrate(camera, max_dist_thresh, offset=0, subtract_bg=False):
             # No more input source - check all of the detected coordinates are close to each other
             # Repeat this corner if the coordinates are far apart from each other
             elif (len(sources) == 0 or coord == (-1, -1)) and num_coord_found >= 5:
-                def square_distance(x, y):
-                    return sum([(xi - yi) ** 2 for xi, yi in zip(x, y)]) ** (1 / 2)
-
-                max_dist = 0
-                for left, right in combinations(coords, 2):
-                    max_dist = max(max_dist, square_distance(left, right))
+                max_dist = mouse_emitter.calc_max_dist(coords)
                 if max_dist > max_dist_thresh:
-                    print(max_dist)
                     print("The detected coordinates were too far apart. Please try again.")
                     num_coord_found = 0
                     coords = []
                 else:
                     # Good to go for next corner
-                    print("Done %s" % direction)
+                    print("Successfully calibrated %s" % direction)
                     break
         average_coord = tuple([sum(a) / len(a) for a in zip(*coords)])
         print('%s average: %s' % (direction, average_coord))
@@ -275,7 +268,7 @@ if __name__ == '__main__':
             calib_coords = cs.read_calib()
         else:
             # dr.show_calib_img()
-            calib_coords = calibrate(camera_pi, 10)
+            calib_coords = calibrate(camera_pi, 15)
             answer = input("Save this calibration data? [y/n]:")
             if answer == "y" or answer == "Y":
                 cs.save_calib(calib_coords)

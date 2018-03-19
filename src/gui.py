@@ -216,7 +216,7 @@ class MainApp(App):
             self.__dict_settings = dict_settings
         else:
             self.__dict_settings = {'RC_NUM_FRAMES': 10,
-                                    'RC_RADIUS': 25,
+                                    'RC_DIST': 25,
                                     'MAX_FPS': 20,
                                     'MAX_THREAD': 6,
                                     'BLUR_SIZE': 5,
@@ -250,7 +250,8 @@ class MainApp(App):
 
         # TODO: integrate calibration implementation
         offset = self.__calib_offset
-        calib_coords = calibrate(self.__camera, offset=offset)
+        max_dist = self.__dict_settings['RC_DIST']
+        calib_coords = calibrate(self.__camera, max_dist=max_dist, offset=offset)
         if calib_coords is not None:
             # Calculate transformation matrix to convert from calibration coordinates to screen coordinates
             np_calib_coords = np.float32([
@@ -282,7 +283,7 @@ class MainApp(App):
         # TODO: integrate processing framework
         process_output = ProcessOutput()
         consumer = Consumer()
-        dr.show_clear()	
+        dr.show_clear() 
         cam_thread = CameraThread(self.__camera_pi, process_output)
         pass
 
