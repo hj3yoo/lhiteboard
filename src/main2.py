@@ -4,6 +4,7 @@ import threading
 import picamera
 import cv2
 import numpy as np
+from itertools import combinations
 import sys
 from io import BytesIO
 import debug_render as dbr
@@ -189,12 +190,18 @@ class CameraThread(threading.Thread):
         camera_pi.stop_recording()
 
 
-def calibrate(camera, offset=0):
+def calibrate(camera, max_dist_thresh, offset=0, subtract_bg=False):
     calib_coords = []
     # Calibration - let the user grab 4 coordinates 
     # U press keyboard to take pic
 
     stream = BytesIO()
+
+    if subtract_bg:
+    # TODO: take a frame of the ambient (without pen), then subtract the every incoming frames by the ambient frame
+	    camera.capture(stream, format='jpeg')
+	    stream.seek(0)
+	    image_bg = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
 
     dirs = ["TOP LEFT", "TOP RIGHT", "BOT RIGHT", "BOT LEFT"]
     expected_coords = [(0, 0), (WIDTH, 0), (WIDTH, HEIGHT), (0, HEIGHT)]
@@ -207,31 +214,43 @@ def calibrate(camera, offset=0):
         dr.show_clear()
         dr.show_point(expected_coord[0], expected_coord[1], radius=25, transform=False)
         print('Please point your device towards %s corner of the screen' % direction)
-        # Continuously capture frame until a coordinate is detected
-        while num_coord_found < 5:
+        # Continuously capture frame until 5 or more coordinates are detected
+        while True:
+            print(num_coord_found)
             camera.capture(stream, format='jpeg')
             stream.seek(0)
-            image = cv2.imdecode(np.fromstring(stream.getvalue(),
-                                               dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+            image = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+            # Remove ambient background
+            if subtract_bg:
+            	image -= image_bg
             sources, _ = detect.find_source(image)
-            print(sources)
             if len(sources) != 0:
                 (x0, y0), (x1, y1) = sources[0]
                 coord, _ = detect.find_coordinate(image[y0:y1, x0:x1])
                 if coord != (-1, -1):
-                    print(coord)
                     coord = (coord[0] + x0, coord[1] + y0)
                     coords.append(coord)
                     print('%s: %s' % (direction, coord))
                     num_coord_found += 1
-            # TODO: check if all coordinates are relatively close to each other
-            pass
-        average_x = 0
-        average_y = 0
-        for x, y in coords:
-            average_x += x
-            average_y += y
-        average_coord = (average_x / len(coords), average_y / len(coords))
+            # No more input source - check all of the detected coordinates are close to each other
+            # Repeat this corner if the coordinates are far apart from each other
+            elif (len(sources) == 0 or coord == (-1, -1)) and num_coord_found >= 5:
+                def square_distance(x, y):
+                    return sum([(xi - yi) ** 2 for xi, yi in zip(x, y)]) ** (1/2)
+                max_dist = 0
+                for left, right in combinations(coords, 2):
+                    max_dist = max(max_dist, square_distance(left, right))
+                if max_dist > max_dist_thresh:
+                    print(max_dist)
+                    print("The detected coordinates were too far apart. Please try again.")
+                    num_coord_found = 0
+                    coords = []
+                else:
+                	# Good to go for next corner
+                    print("Done %s" % direction)
+                    break
+        average_coord = tuple([sum(a) / len(a) for a in zip(*coords)])
+        print('%s average: %s' % (direction, average_coord))
         calib_coords.append(average_coord)
         time.sleep(2)
     #camera.stop_preview()
@@ -251,7 +270,7 @@ if __name__ == '__main__':
             calib_coords = cs.read_calib()
         else:
             #dr.show_calib_img()
-            calib_coords = calibrate(camera_pi)
+            calib_coords = calibrate(camera_pi, 10)
             answer = input("Save this calibration data? [y/n]:")
             if answer == "y" or answer == "Y":
                 cs.save_calib(calib_coords)
@@ -267,6 +286,8 @@ if __name__ == '__main__':
             [WIDTH-dbr.CALIB_BORDER, dbr.CALIB_BORDER],
             [WIDTH-dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER],
             [dbr.CALIB_BORDER, HEIGHT-dbr.CALIB_BORDER]])
+        # TODO: map 4 corners of the screen with the offset in mind
+        np_crop_points = np.int32(np_calib_points)
         warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
         print(warp_matrix)
         
