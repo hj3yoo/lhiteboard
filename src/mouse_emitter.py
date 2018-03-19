@@ -5,24 +5,17 @@ import threading
 import queue
 import _thread
 
-class MouseState():
-    MOUSE_UP   = 0
-    MOUSE_DOWN = 1
-    
-    def __init__(self):
-        self.first_detected_ts = None
-        self.last_detected = None
-        self.last_detected_ts = None
-        self.state = MouseState.MOUSE_UP
+MOUSE_UP = 0
+MOUSE_DOWN = 1
 
-MOUSE_RIGHT_CLICK_DELAY_THRESH = 3.0
-LAST_DETECTED_THRESH = 0.5
-
+MOUSE_LEFT = 1
+MOUSE_RIGHT = 2
 
 class MouseThread(threading.Thread):
 
-    def __init__(self):
+    def __init__(self, mouse_out):
         super(MouseThread, self).__init__()
+        self.__mouse = mouse_out
         self.queue = queue.Queue()
         self.start()
 
@@ -32,70 +25,69 @@ class MouseThread(threading.Thread):
                 while True:
                     coord = self.queue.get_nowait()
                     if coord is not None:
-                        mouse_tick(coord[0], coord[1])
-            except queue.Empty: pass
-            except Exception as e:
-                print(e)
-            time.sleep(0.01) 
-
-m = None
-state = MouseState()
-thread = None
+                        self.__mouse.process_tick(coord[0], coord[1])
+            except queue.Empty:
+                pass
+            #except Exception as e:
+            #    print(e)
+            time.sleep(0.01)
 
 
-def init():
-    global m
-    global thread
-    m = PyMouse()
-    thread = MouseThread()
+class Mouse(PyMouse):
+    def __init__(self, drop_tolerance, right_click_thresh):
+        super().__init__()
+        self.__is_pressed = False
+        self.__pressed_duration = 0
+        self.__continuous_dropped_frames = 0
+        self.__drag_thresh = drop_tolerance
+        self.__rc_thresh = right_click_thresh
 
-def mouse_move(norm_screen_x, norm_screen_y):
-    global m
-    try:
-        m.move( int(norm_screen_x * m.screen_size()[0]), int(norm_screen_y * m.screen_size()[1]) )
-    except Exception as e: print(e)
 
-def mouse_click(norm_screen_x, norm_screen_y, clicktype):
-    """
-    clicktype 1:  left
-    clicktype 2:  right
-    """
-    global m
-    try:
-        m.click( int(norm_screen_x * m.screen_size()[0]), int(norm_screen_y * m.screen_size()[1]), clicktype )
-    except Exception as e: 
-        print(e)
-        import sys
-        sys.exit(-1)
+    def mouse_move(self, norm_screen_x, norm_screen_y):
+        #try:
+        self.move(int(norm_screen_x * self.screen_size()[0]), int(norm_screen_y * self.screen_size()[1]))
+        #except Exception as e: 
+        #    print(e)
 
-def mouse_tick(norm_screen_x, norm_screen_y):
-    global state
+    def mouse_click(self, norm_screen_x, norm_screen_y, click_type):
+        """
+        clicktype 1:  left
+        clicktype 2:  right
+        """
+        #try:
+        self.click( int(norm_screen_x * self.screen_size()[0]), int(norm_screen_y * self.screen_size()[1]), click_type)
+        #except Exception as e: 
+        #    print(e)
 
-    now_ts = time.time()
-    detected = (norm_screen_x, norm_screen_y) != (-1, -1)
+    def mouse_press(self, norm_screen_x, norm_screen_y, click_type):
+        self.press(int(norm_screen_x * self.screen_size()[0]), int(norm_screen_y * self.screen_size()[1]), click_type)
 
-    if detected:
-        state.last_detected = (norm_screen_x, norm_screen_y)
-        state.last_detected_ts = now_ts
+    def mouse_release(self, norm_screen_x, norm_screen_y, click_type):
+        self.release(int(norm_screen_x * self.screen_size()[0]), int(norm_screen_y * self.screen_size()[1]), click_type)
 
-    if state.state == MouseState.MOUSE_UP:
-        # UP -> DOWN transition
-        if detected:
-            state.first_detected_ts = time.time()
-            state.state = MouseState.MOUSE_DOWN
+    def mouse_drag(self, norm_screen_x, norm_screen_y):
+        self.drag(int(norm_screen_x * self.screen_size()[0]), int(norm_screen_y * self.screen_size()[1]))
 
-    elif state.state == MouseState.MOUSE_DOWN:
-        # DOWN -> UP transition
-        if not detected and now_ts - state.last_detected_ts > LAST_DETECTED_THRESH:
-            state.state = MouseState.MOUSE_UP 
-            if(now_ts - state.first_detected_ts >= MOUSE_RIGHT_CLICK_DELAY_THRESH):
-                print("RIGHT CLICK\n\n\n")
-                mouse_click(state.last_detected[0], state.last_detected[1], 2)
+    def process_tick(self, norm_screen_x, norm_screen_y):
+        if norm_screen_x == -1 and norm_screen_y == -1:
+            # No coordinate has been found
+            if self.__is_pressed and self.__continuous_dropped_frames >= self.__drag_thresh:
+                current_pos = self.position()
+                self.release(current_pos[0], current_pos[1], MOUSE_LEFT)
+            self.__is_pressed = False
+            self.__pressed_duration = 0
+            self.__continuous_dropped_frames += 1
+        else:
+            if self.__is_pressed:
+                self.mouse_move(norm_screen_x, norm_screen_y)
             else:
-                print("LEFT CLICK\n\n\n")
-                mouse_click(state.last_detected[0], state.last_detected[1], 1)
+                self.mouse_press(norm_screen_x, norm_screen_y, MOUSE_LEFT)
+            self.__is_pressed = True
+            self.__continuous_dropped_frames = 0
+            self.__pressed_duration += 1
 
 if __name__ == "__main__":
-    init()
-    mouse_click(0.5, 0.5, 1)
+    mouse = Mouse(drop_tolerance=4, right_click_thresh=30)
+    thread = MouseThread(mouse)
+    #mouse_click(0.5, 0.5, 1)
 

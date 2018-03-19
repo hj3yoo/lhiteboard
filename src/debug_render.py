@@ -4,43 +4,46 @@ import _thread
 import time
 import mouse_emitter
 
-POINT_WIDTH=10
-POINT_HEIGHT=10
-UPDATE_DELAY_SEC=(1.0/30)
+POINT_WIDTH = 10
+POINT_HEIGHT = 10
+UPDATE_DELAY_SEC = (1.0 / 30)
 
 CALIB_BORDER = 0
+
 
 class DebugRenderer():
     def __init__(self):
         self.master = Tk()
-        #self.master.attributes("-fullscreen", True)
+        # self.master.attributes("-fullscreen", True)
         self.w = self.master.winfo_screenwidth()
         self.h = self.master.winfo_screenheight()
         self.canvas = Canvas(self.master, width=self.w, height=self.h)
         self.canvas.config(background="teal")
         self.canvas.pack()
         self.queue = queue.Queue()
+        self.mouse = mouse_emitter.Mouse(drop_tolerance=0, right_click_thresh=30)
+        self.mouse_thread = mouse_emitter.MouseThread(self.mouse)
 
     def show_calib_img(self):
         radius = 100
         self.canvas.create_oval(
-            CALIB_BORDER - radius, 
-            CALIB_BORDER - radius, 
-            CALIB_BORDER + radius, 
+            CALIB_BORDER - radius,
+            CALIB_BORDER - radius,
+            CALIB_BORDER + radius,
             CALIB_BORDER + radius)
         self.canvas.create_oval(
-            self.w - CALIB_BORDER - radius, 
-            CALIB_BORDER - radius, 
-            self.w - CALIB_BORDER + radius, 
+            self.w - CALIB_BORDER - radius,
+            CALIB_BORDER - radius,
+            self.w - CALIB_BORDER + radius,
             CALIB_BORDER + radius)
-        self.canvas.create_oval(self.w - CALIB_BORDER - radius, 
-            self.h - CALIB_BORDER - radius, 
-            self.w - CALIB_BORDER + radius, 
-            self.h - CALIB_BORDER + radius)
+        self.canvas.create_oval(self.w - CALIB_BORDER - radius,
+                                self.h - CALIB_BORDER - radius,
+                                self.w - CALIB_BORDER + radius,
+                                self.h - CALIB_BORDER + radius)
         self.canvas.create_oval(
-            CALIB_BORDER - radius, 
-            self.h - CALIB_BORDER - radius, 
-            CALIB_BORDER + radius, 
+            CALIB_BORDER - radius,
+            self.h - CALIB_BORDER - radius,
+            CALIB_BORDER + radius,
             self.h - CALIB_BORDER + radius)
         self.master.update()
 
@@ -61,11 +64,12 @@ class DebugRenderer():
                 coord = self.queue.get_nowait()
                 if coord is not None:
                     self.show_point(coord[0], coord[1])
-                    #mouse_emitter.mouse_tick(coord[0], coord[1])
-                    mouse_emitter.thread.queue.put(coord)
+                    # mouse_emitter.mouse_tick(coord[0], coord[1])
+                    self.mouse_thread.queue.put(coord)
         except queue.Empty:
-            #mouse_emitter.mouse_tick(-1, -1)
-            mouse_emitter.thread.queue.put((-1, -1))
+            # mouse_emitter.mouse_tick(-1, -1)
+            #self.mouse_thread.queue.put((-1, -1))
+            pass
         time.sleep(UPDATE_DELAY_SEC)
 
     def show_point(self, x, y, radius=POINT_WIDTH, transform=True):
@@ -77,7 +81,7 @@ class DebugRenderer():
             coord = self.normalized_cam_to_canvas(x, y)
         else:
             coord = (x, y)
-            
+
         if x != -1 and y != -1:
             self.canvas.create_oval(
                 coord[0] - radius,
@@ -97,7 +101,7 @@ class DebugRenderer():
 
 
 if __name__ == "__main__":
-    dbr = DebugRenderer(640, 480) 
+    dbr = DebugRenderer(640, 480)
     while True:
         dbr.push_point_mt(0.5, 0.5);
         dbr.mainloop_tick()
