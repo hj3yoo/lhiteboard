@@ -19,15 +19,6 @@ NUM_THREADS = 8
 WIDTH = 800
 HEIGHT = 600
 
-result_lock = threading.Lock()
-result_table = {}
-dr = dbr.DebugRenderer()
-
-# mouse = Mouse(drop_tolerance=0, right_click_thresh=30)
-# thread = MouseThread(mouse)
-
-warp_matrix = None
-
 
 def to_normalized_screen_coords(raw_coord):
     np_raw = np.float32([raw_coord[0], raw_coord[1], 1.0])
@@ -53,8 +44,10 @@ class Consumer(threading.Thread):
                         nsc = to_normalized_screen_coords(get)
                         #print("---> NSC: {0}".format(nsc))
                         dr.push_point_mt(nsc[0], nsc[1])
+                        mouse_thread.queue.put((nsc[0], nsc[1]))
                     else:
                         dr.push_point_mt(*get)
+                        mouse_thread.queue.put(get)
                     self.i += 1
 
 
@@ -77,7 +70,7 @@ class ImageProcessor(threading.Thread):
                     # Read the image and do some processing on it
                     # Image.open(self.stream)
                     if self.owner is not None:
-                        with self.owner.lock:
+                        with self.owner.idx_lock:
                             idx = self.owner.frames_processed
                             self.owner.frames_processed += 1
 
@@ -103,10 +96,10 @@ class ImageProcessor(threading.Thread):
                         coord = (-1, -1)
                     # print("Found coordinate for frame {0}: {1}".format(idx, coord))
 
-                    if self.owner is not None:
-                        if coord != (-1, -1):
-                            with self.owner.lock:
-                                self.owner.frames_detected += 1
+                    #if self.owner is not None:
+                    #    if coord != (-1, -1):
+                    #        with self.owner.lock:
+                    #            self.owner.frames_detected += 1
 
                     with result_lock:
                         result_table[idx] = coord
@@ -123,7 +116,7 @@ class ImageProcessor(threading.Thread):
                     self.event.clear()
                     # Return ourselves to the available pool
                     if self.owner is not None:
-                        with self.owner.lock:
+                        with self.owner.thread_pool_lock:
                             self.owner.pool.append(self)
 
 
@@ -131,11 +124,12 @@ class ProcessOutput(object):
     def __init__(self):
         self.done = False
         self.frames_processed = 0
-        self.frames_dropped = 0
-        self.frames_detected = 0
+        #self.frames_dropped = 0
+        #self.frames_detected = 0
         # Construct a pool of 4 image processors along with a lock
         # to control access between threads
-        self.lock = threading.Lock()
+        self.thread_pool_lock = threading.Lock()
+        self.idx_lock = threading.Lock()
         self.pool = [ImageProcessor(self) for i in range(NUM_THREADS)]
         self.processor = None
 
@@ -145,14 +139,14 @@ class ProcessOutput(object):
             # a spare one
             if self.processor:
                 self.processor.event.set()
-            with self.lock:
+            with self.thread_pool_lock:
                 if self.pool:
                     self.processor = self.pool.pop()
                 else:
                     # No processor's available, we'll have to skip
                     # this frame; you may want to print a warning
                     # here to see whether you hit this case
-                    self.frames_dropped += 1
+                    #self.frames_dropped += 1
                     # print("WARNING: dropped frame")
                     # print()
                     self.processor = None
@@ -164,15 +158,16 @@ class ProcessOutput(object):
         # down in an orderly fashion. First, add the current processor
         # back to the pool
         if self.processor:
-            with self.lock:
+            with self.thread_pool_lock:
                 self.pool.append(self.processor)
                 self.processor = None
         # Now, empty the pool, joining each thread as we go
         while True:
-            with self.lock:
+            with self.thread_pool_lock:
                 try:
                     proc = self.pool.pop()
                 except IndexError:
+                    print('pool is empty')
                     pass  # pool is empty
             proc.terminated = True
             proc.join()
@@ -214,9 +209,10 @@ def calibrate(camera, max_dist_thresh, offset=0, subtract_bg=False):
         direction = dirs[i]
         expected_coord = expected_coords[i]
         num_coord_found = 0
+        num_frame_idle = 0
         coords = []
-        dr.show_clear()
-        dr.show_point(expected_coord[0], expected_coord[1], radius=25, transform=False)
+        #dr.show_clear()
+        #dr.show_point(expected_coord[0], expected_coord[1], radius=25, transform=False)
         print('Please point your device towards %s corner of the screen' % direction)
         # Continuously capture frame until 5 or more coordinates are detected
         while True:
@@ -235,6 +231,15 @@ def calibrate(camera, max_dist_thresh, offset=0, subtract_bg=False):
                     coords.append(coord)
                     print('%s: %s' % (direction, coord))
                     num_coord_found += 1
+                    num_frame_idle = 0
+                else:
+                    num_frame_idle += 1
+                    # If nothing has been detected for 20 frames, restart the calibration for this corner
+                    if num_frame_idle >= 20 and num_coord_found > 0:
+                        print('No input has been detected. Please try again.')
+                        num_coord_found = 0
+                        coords = []
+
             # No more input source - check all of the detected coordinates are close to each other
             # Repeat this corner if the coordinates are far apart from each other
             elif (len(sources) == 0 or coord == (-1, -1)) and num_coord_found >= 5:
@@ -250,67 +255,75 @@ def calibrate(camera, max_dist_thresh, offset=0, subtract_bg=False):
         average_coord = tuple([sum(a) / len(a) for a in zip(*coords)])
         print('%s average: %s' % (direction, average_coord))
         calib_coords.append(average_coord)
-        time.sleep(2)
     # camera.stop_preview()
     return calib_coords
 
 
 if __name__ == '__main__':
-    with picamera.PiCamera(sensor_mode=5) as camera_pi:
-        # Capture grayscale image instead of colour
-        camera_pi.color_effects = (128, 128)
+    try:
+        result_lock = threading.Lock()
+        result_table = {}
+        dr = dbr.DebugRenderer()
 
-        # camera_pi.start_preview() #This outputs the video full-screen in real time
-        time.sleep(2)
+        mouse = mouse_emitter.Mouse(drop_tolerance=2, right_click_duration=30, right_click_dist=15)
+        mouse_thread = mouse_emitter.MouseThread(mouse)
 
-        answer = input("Do you want to use the saved calibration data? [y/n]:")
-        if answer == "y" or answer == "Y":
-            calib_coords = cs.read_calib()
-        else:
-            # dr.show_calib_img()
-            calib_coords = calibrate(camera_pi, 15)
-            answer = input("Save this calibration data? [y/n]:")
+        warp_matrix = None
+
+        with picamera.PiCamera(sensor_mode=5) as camera_pi:
+            # Capture grayscale image instead of colour
+            camera_pi.color_effects = (128, 128)
+
+            # camera_pi.start_preview() #This outputs the video full-screen in real time
+            time.sleep(2)
+
+            answer = input("Do you want to use the saved calibration data? [y/n]:")
             if answer == "y" or answer == "Y":
-                cs.save_calib(calib_coords)
+                calib_coords = cs.read_calib()
+            else:
+                # dr.show_calib_img()
+                calib_coords = calibrate(camera_pi, 15)
+                answer = input("Save this calibration data? [y/n]:")
+                if answer == "y" or answer == "Y":
+                    cs.save_calib(calib_coords)
 
-        print("Calibration coordinates: {0}".format(calib_coords))
-        np_calib_points = np.float32([
-            [calib_coords[0][0], calib_coords[0][1]],
-            [calib_coords[1][0], calib_coords[1][1]],
-            [calib_coords[2][0], calib_coords[2][1]],
-            [calib_coords[3][0], calib_coords[3][1]]
-        ])
-        np_warped_points = np.float32([[dbr.CALIB_BORDER, dbr.CALIB_BORDER],
-                                       [WIDTH - dbr.CALIB_BORDER, dbr.CALIB_BORDER],
-                                       [WIDTH - dbr.CALIB_BORDER, HEIGHT - dbr.CALIB_BORDER],
-                                       [dbr.CALIB_BORDER, HEIGHT - dbr.CALIB_BORDER]])
-        # TODO: map 4 corners of the screen with the offset in mind
-        np_crop_points = np.int32(np_calib_points)
-        warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
-        print(warp_matrix)
+            print("Calibration coordinates: {0}".format(calib_coords))
+            np_calib_points = np.float32([
+                [calib_coords[0][0], calib_coords[0][1]],
+                [calib_coords[1][0], calib_coords[1][1]],
+                [calib_coords[2][0], calib_coords[2][1]],
+                [calib_coords[3][0], calib_coords[3][1]]
+            ])
+            np_warped_points = np.float32([[dbr.CALIB_BORDER, dbr.CALIB_BORDER],
+                                           [WIDTH - dbr.CALIB_BORDER, dbr.CALIB_BORDER],
+                                           [WIDTH - dbr.CALIB_BORDER, HEIGHT - dbr.CALIB_BORDER],
+                                           [dbr.CALIB_BORDER, HEIGHT - dbr.CALIB_BORDER]])
+            # TODO: map 4 corners of the screen with the offset in mind
+            np_crop_points = np.int32(np_calib_points)
+            warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
+            print(warp_matrix)
 
-        # actually start our threads now
-        process_output = ProcessOutput()
-        consumer = Consumer()
-        time_begin = time.time()
-        dr.show_clear()
+            # actually start our threads now
+            process_output = ProcessOutput()
+            consumer = Consumer()
+            time_begin = time.time()
+            dr.show_clear()
 
-
-        def signal_handler(signal, frame):
-            time_now = time.time()
-            fps = process_output.frames_processed / (time_now - time_begin)
-            dropped_percent = process_output.frames_dropped / (process_output.frames_dropped
-                                                               + process_output.frames_processed) * 100.0
-            detected_percent = process_output.frames_detected / process_output.frames_processed * 100.0
-            print("Average FPS thus far: {0}".format(fps))
-            print("Avg. % of frames dropped: {0}".format(dropped_percent))
-            print("Detected percent: {0}".format(detected_percent))
-
-
-        signal.signal(signal.SIGQUIT, signal_handler)
-
-        cam_thread = CameraThread(camera_pi, process_output)
-        dr.mainloop()
-
-        # TODO actual cleanup somehow
-        print("Quitting...")
+            '''
+            def signal_handler(signal, frame):
+                time_now = time.time()
+                fps = process_output.frames_processed / (time_now - time_begin)
+                dropped_percent = process_output.frames_dropped / (process_output.frames_dropped
+                                                                   + process_output.frames_processed) * 100.0
+                detected_percent = process_output.frames_detected / process_output.frames_processed * 100.0
+                print("Average FPS thus far: {0}".format(fps))
+                print("Avg. % of frames dropped: {0}".format(dropped_percent))
+                print("Detected percent: {0}".format(detected_percent))
+            
+            signal.signal(signal.SIGQUIT, signal_handler)
+            '''
+            cam_thread = CameraThread(camera_pi, process_output)
+            dr.mainloop()
+    except KeyboardInterrupt:
+        print('Ctrl + C detected')
+        sys.exit(0)

@@ -58,6 +58,7 @@ class Mouse(PyMouse):
             if self.__is_pressed and self.__continuous_dropped_frames >= self.__drag_thresh:
                 current_pos = self.position()
                 max_dist = calc_max_dist(self.__continuous_coords)
+                print(max_dist)
                 if len(self.__continuous_coords) >= self.__rc_duration and max_dist < self.__rc_dist:
                     # This is a right click - pen was held in a small area for a fixed duration
                     self.click(*current_pos, button=MOUSE_RIGHT)

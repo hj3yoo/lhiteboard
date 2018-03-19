@@ -41,9 +41,12 @@ def find_coordinate(img, blur_size=5, static_threshold=30, dynamic_threshold=50,
     else:
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     img_blur = cv2.GaussianBlur(img_gray, (blur_size, blur_size), 0)
+
     # With pixels brighter than static threshold value x (to cancel out noises),
     # Find the top n% bright pixels
+    print('', end='')
     thresh_value = calc_hist_percentile(img, static_threshold, 100 - dynamic_threshold)
+    print('', end='')
     img_thresh = cv2.threshold(img_blur, thresh_value, 255, cv2.THRESH_TOZERO)[1]
 
     # Run contour detection, then each of them into an elliptical shape

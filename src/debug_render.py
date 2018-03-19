@@ -21,8 +21,8 @@ class DebugRenderer():
         self.canvas.config(background="teal")
         self.canvas.pack()
         self.queue = queue.Queue()
-        self.mouse = mouse_emitter.Mouse(drop_tolerance=2, right_click_duration=30, right_click_dist=15)
-        self.mouse_thread = mouse_emitter.MouseThread(self.mouse)
+        #self.mouse = mouse_emitter.Mouse(drop_tolerance=2, right_click_duration=30, right_click_dist=15)
+        #self.mouse_thread = mouse_emitter.MouseThread(self.mouse)
 
     def show_calib_img(self):
         radius = 100
@@ -64,10 +64,8 @@ class DebugRenderer():
                 coord = self.queue.get_nowait()
                 if coord is not None:
                     self.show_point(coord[0], coord[1])
-                    # mouse_emitter.mouse_tick(coord[0], coord[1])
-                    self.mouse_thread.queue.put(coord)
+                    #self.mouse_thread.queue.put(coord)
         except queue.Empty:
-            # mouse_emitter.mouse_tick(-1, -1)
             #self.mouse_thread.queue.put((-1, -1))
             pass
         time.sleep(UPDATE_DELAY_SEC)
