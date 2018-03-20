@@ -12,6 +12,7 @@ import calib_save as cs
 import signal
 import sys
 from mouse_emitter import *
+import time
 
 import detect
 
@@ -43,20 +44,20 @@ class Consumer(threading.Thread):
                     if get != (-1, -1):
                         nsc = to_normalized_screen_coords(get)
                         #print("---> NSC: {0}".format(nsc))
-                        dr.push_point_mt(nsc[0], nsc[1])
+                        #dr.push_point_mt(nsc[0], nsc[1])
                         mouse_thread.queue.put(nsc)
                     else:
-                        dr.push_point_mt(*get)
+                        #dr.push_point_mt(*get)
                         mouse_thread.queue.put(get)
                     self.i += 1
+        print('Consumer terminating')
 
-    # TODO: clean everything for termination
     def terminate(self):
-        pass
+        self.terminated = True
 
 
 class ImageProcessor(threading.Thread):
-    def __init__(self, owner=None):
+    def __init__(self, owner):
         super(ImageProcessor, self).__init__()
         self.stream = io.BytesIO()
         self.event = threading.Event()
@@ -65,18 +66,18 @@ class ImageProcessor(threading.Thread):
         self.start()
 
     def run(self):
+        print('ImageProcessor running - Thread #%d' % threading.get_ident())
         # This method runs in a separate thread
-        while not self.terminated:
+        while not self.owner.done:
             # Wait for an image to be written to the stream
             if self.event.wait(1):
                 try:
                     self.stream.seek(0)
                     # Read the image and do some processing on it
                     # Image.open(self.stream)
-                    if self.owner is not None:
-                        with self.owner.lock:
-                            idx = self.owner.frames_processed
-                            self.owner.frames_processed += 1
+                    with self.owner.lock:
+                        idx = self.owner.frames_processed
+                        self.owner.frames_processed += 1
 
                     image = cv2.imdecode(np.fromstring(self.stream.getvalue(),
                                                        dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
@@ -100,10 +101,9 @@ class ImageProcessor(threading.Thread):
                         coord = (-1, -1)
                     # print("Found coordinate for frame {0}: {1}".format(idx, coord))
 
-                    if self.owner is not None:
-                        if coord != (-1, -1):
-                            with self.owner.lock:
-                                self.owner.frames_detected += 1
+                    if coord != (-1, -1):
+                        with self.owner.lock:
+                            self.owner.frames_detected += 1
 
                     with result_lock:
                         result_table[idx] = coord
@@ -119,13 +119,10 @@ class ImageProcessor(threading.Thread):
                     self.stream.truncate()
                     self.event.clear()
                     # Return ourselves to the available pool
-                    if self.owner is not None:
-                        with self.owner.lock:
-                            self.owner.pool.append(self)
-
-    # TODO: clean everything for termination
-    def terminate(self):
-        pass
+                    with self.owner.lock:
+                        self.owner.pool.append(self)
+                    time.sleep(0.01)
+        print('ImageProcessor terminating - Thread #%d' % threading.get_ident())
 
 
 class ProcessOutput(object):
@@ -164,23 +161,27 @@ class ProcessOutput(object):
         # When told to flush (this indicates end of recording), shut
         # down in an orderly fashion. First, add the current processor
         # back to the pool
+        self.done = True
         if self.processor:
             with self.lock:
                 self.pool.append(self.processor)
                 self.processor = None
         # Now, empty the pool, joining each thread as we go
-        while True:
+        threads_terminated = 0
+        start_ts = time.time()
+        elapsed_ts = time.time() - start_ts
+        while threads_terminated < NUM_THREADS and elapsed_ts < 3.0:
             with self.lock:
                 try:
                     proc = self.pool.pop()
+                    proc.terminated = True
+                    threads_terminated += 1
+                    # proc.join()
                 except IndexError:
                     pass  # pool is empty
-            proc.terminated = True
-            proc.join()
-
-    # TODO: clean everything for termination
-    def terminate(self):
-        pass
+            elapsed_ts = time.time() - start_ts
+        print('flush finished')
+        sys.exit(0)
 
 
 # sensor_mode 6 boosts the FPS
@@ -193,10 +194,10 @@ class CameraThread(threading.Thread):
         self.start()
 
     def run(self):
-        camera_pi.start_recording(process_output, format='mjpeg')
-        while not process_output.done:
-            camera_pi.wait_recording(1)
-        camera_pi.stop_recording()
+        self.camera.start_recording(self.output, format='mjpeg')
+        while not self.output.done:
+            self.camera.wait_recording(1)
+        self.camera.stop_recording()
 
 
 def calibrate(camera):
@@ -244,7 +245,6 @@ if __name__ == '__main__':
 
             result_lock = threading.Lock()
             result_table = {}
-            dr = dbr.DebugRenderer()
 
             # Mouse emulator
             mouse = Mouse(drop_tolerance=2, right_click_duration=30, right_click_dist=15)
@@ -275,12 +275,16 @@ if __name__ == '__main__':
             # actually start our threads now
             process_output = ProcessOutput()
             consumer = Consumer()
-            time_begin = time.time()
-            dr.show_clear()
-
             cam_thread = CameraThread(camera_pi, process_output)
-            dr.mainloop()
+
+            while True:
+                time.sleep(0.001)
+            #dr = dbr.DebugRenderer()
+            #dr.show_clear()
+            #dr.mainloop()
+
     except KeyboardInterrupt:
         print('Terminating ...')
-        process_output.terminate()
+        process_output.flush()
         consumer.terminate()
+        sys.exit(0)
