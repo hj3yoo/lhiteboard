@@ -36,22 +36,23 @@ def find_coordinate(img, blur_size=5, static_threshold=30, dynamic_threshold=50,
         return (img.shape[0] // 2, img.shape[1] // 2), t_elapsed
     # Pre-processing - convert to grayscale, apply Gaussian blur, then remove noises with threshold
     # Check if the image is already grayscale
+    #print('e', end=' ')
     if len(img.shape) == 2:
         img_gray = img
     else:
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     img_blur = cv2.GaussianBlur(img_gray, (blur_size, blur_size), 0)
-
     # With pixels brighter than static threshold value x (to cancel out noises),
     # Find the top n% bright pixels
-    print('', end='')
+    #print('f', end=' ')
     thresh_value = calc_hist_percentile(img, static_threshold, 100 - dynamic_threshold)
-    print('', end='')
+    #print('g', end=' ')
     img_thresh = cv2.threshold(img_blur, thresh_value, 255, cv2.THRESH_TOZERO)[1]
 
     # Run contour detection, then each of them into an elliptical shape
     _, contours, _ = cv2.findContours(img_thresh, 1, 2)
     ellipses = [cv2.fitEllipse(cont) for cont in contours if len(cont) >= 5]
+    #print('h', end=' ')
     if len(ellipses) == 0:
         if debug:
             t_end = datetime.now()
@@ -113,42 +114,44 @@ def find_source(img, blur_size=5, threshold=40, neighbour_ratio=0.5, debug=False
         return ret, t_elapsed
     # Pre-processing - convert to grayscale, apply Gaussian blur, then remove noises with threshold
     # Check if the image is already grayscale
+    #print('a', end=' ')
     if len(img.shape) == 2:
         img_gray = img
     else:
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     img_blur = cv2.GaussianBlur(img_gray, (blur_size, blur_size), 0)
     img_thresh = cv2.threshold(img_blur, threshold, 255, cv2.THRESH_TOZERO)[1]
+    #print('b', end=' ')
 
     # Find all sources of IR light
     # Run contour detection, then each of them into a rectangular box
     _, contours, _ = cv2.findContours(img_thresh, 1, 2)
     boxes = [cv2.boundingRect(cont) for cont in contours]
+    #print('c', end=' ')
     for x, y, w, h in boxes:
         x0 = max(0, int(x - w * neighbour_ratio / 2))
-        x1 = min(img.shape[0], int(x + w * (1 + neighbour_ratio / 2)))
+        x1 = min(img.shape[1], int(x + w * (1 + neighbour_ratio / 2)))
         y0 = max(0, int(y - h * neighbour_ratio / 2))
-        y1 = min(img.shape[1], int(y + h * (1 + neighbour_ratio / 2)))
+        y1 = min(img.shape[0], int(y + h * (1 + neighbour_ratio / 2)))
         ret.append(((x0, y0), (x1, y1)))
-        '''
-        #if debug:
-        #    cv2.imshow('source', img[y0:y1, x0:x1])
-        #    cv2.waitKey(0)
-        '''
-
+        if show_image:
+            img_debug_show = cv2.rectangle(img_thresh, (x0, y0), (x1, y1), COLOR_GREEN, 1)
+            #cv2.imshow('source', img[y0:y1, x0:x1])
+            #cv2.waitKey(0)
+        
     if debug:
         t_end = datetime.now()
         t_elapsed = (t_end - t_start).total_seconds()
     if show_image:
-        img_debug_show = cv2.drawContours(img_thresh, contours, -1, COLOR_BLUE, 3)
-        img_debug_show = cv2.resize(img_thresh, (len(img_thresh[0]) // 4, len(img_thresh) // 4))
+        img_debug_show = cv2.drawContours(img_debug_show, contours, -1, COLOR_BLUE, 3)
+        #img_debug_show = cv2.resize(img_thresh, (len(img_thresh[0]) // 4, len(img_thresh) // 4))
         cv2.imshow('threshold', img_debug_show)
-        #cv2.waitKey(0)
+        cv2.waitKey(0)
 
     # Sorted by the size of the rectangle in descending order
     def get_key(pt):
         return (pt[0][1] - pt[1][1]) * (pt[0][0] - pt[1][0])
-    ret = sorted(ret, key=get_key, reverse=True)
+    ret = list(reversed(sorted(ret, key=get_key, reverse=True)))
 
     if debug:
         t_end = datetime.now()
