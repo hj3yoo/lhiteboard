@@ -19,15 +19,6 @@ NUM_THREADS = 8
 WIDTH = 800
 HEIGHT = 600
 
-result_lock = threading.Lock()
-result_table = {}
-dr = dbr.DebugRenderer()
-
-mouse = Mouse(drop_tolerance=2, right_click_duration=30, right_click_dist=15)
-mouse_thread = MouseThread(mouse)
-
-warp_matrix = None
-
 
 def to_normalized_screen_coords(raw_coord):
     np_raw = np.float32([raw_coord[0], raw_coord[1], 1.0])
@@ -58,6 +49,10 @@ class Consumer(threading.Thread):
                         dr.push_point_mt(*get)
                         mouse_thread.queue.put(get)
                     self.i += 1
+
+    # TODO: clean everything for termination
+    def terminate(self):
+        pass
 
 
 class ImageProcessor(threading.Thread):
@@ -128,6 +123,10 @@ class ImageProcessor(threading.Thread):
                         with self.owner.lock:
                             self.owner.pool.append(self)
 
+    # TODO: clean everything for termination
+    def terminate(self):
+        pass
+
 
 class ProcessOutput(object):
     def __init__(self):
@@ -179,6 +178,10 @@ class ProcessOutput(object):
             proc.terminated = True
             proc.join()
 
+    # TODO: clean everything for termination
+    def terminate(self):
+        pass
+
 
 # sensor_mode 6 boosts the FPS
 # read more about the camera modes here: https://picamera.readthedocs.io/en/release-1.13/fov.html#camera-modes
@@ -200,26 +203,30 @@ def calibrate(camera):
     coords = []
     # Calibration - let the user grab 4 coordinates
     # U press keyboard to take pic
-    dirs = ["TOP LEFT", "TOP RIGHT", "BOT RIGHT", "BOT LEFT"]
+    dirs = ["top left", "top right", "bottom right", "bottom left"]
     for i in range(len(dirs)):
-        print("Taking {0} calibration picture. Press keyboard when ready.".format(dirs[i]))
-        # camera.start_preview()
-        sys.stdin.readline()
-        stream = BytesIO()
-        camera.capture(stream, format='jpeg')
-        stream.seek(0)
-        image = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8),
-                             cv2.IMREAD_COLOR)
-        sources, _ = detect.find_source(image)
+        coord_found = False
+        while not coord_found:
+            print("Taking {0} calibration picture. Press keyboard when ready.".format(dirs[i]))
+            # camera.start_preview()
+            sys.stdin.readline()
+            stream = BytesIO()
+            camera.capture(stream, format='jpeg')
+            stream.seek(0)
+            image = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8),
+                                 cv2.IMREAD_COLOR)
+            sources, _ = detect.find_source(image)
 
-        if len(sources) != 0:
-            print(sources)
-            (x0, y0), (x1, y1) = sources[0]
-            coord, _ = detect.find_coordinate(image[y0:y1, x0:x1])
-            print(coord)
-            coord = (coord[0] + x0, coord[1] + y0)
-        else:
-            sys.exit("Re-calibration necessary!")
+            if len(sources) != 0:
+                print(sources)
+                (x0, y0), (x1, y1) = sources[0]
+                coord, _ = detect.find_coordinate(image[y0:y1, x0:x1])
+                print(coord)
+                if coord != (-1, -1):
+                    coord = (coord[0] + x0, coord[1] + y0)
+                    coord_found = True
+            else:
+                print('No points detected. Please try again.')
 
         coords.append(coord)
     return coords
@@ -227,61 +234,53 @@ def calibrate(camera):
 
 
 if __name__ == '__main__':
-    with picamera.PiCamera(sensor_mode=5) as camera_pi:
-        # Capture grayscale image instead of colour
-        camera_pi.color_effects = (128, 128)
+    try:
+        with picamera.PiCamera(sensor_mode=5) as camera_pi:
+            # Capture grayscale image instead of colour
+            camera_pi.color_effects = (128, 128)
 
-        # camera_pi.start_preview() #This outputs the video full-screen in real time
-        time.sleep(2)
+            # camera_pi.start_preview() #This outputs the video full-screen in real time
+            #time.sleep(2)
 
-        answer = input("Do you want to use the saved calibration data? [y/n]:")
-        if answer == "y" or answer == "Y":
-            calib_coords = cs.read_calib()
-        else:
-            # dr.show_calib_img()
-            calib_coords = calibrate(camera_pi)
-            answer = input("Save this calibration data? [y/n]:")
+            result_lock = threading.Lock()
+            result_table = {}
+            dr = dbr.DebugRenderer()
+
+            # Mouse emulator
+            mouse = Mouse(drop_tolerance=2, right_click_duration=30, right_click_dist=15)
+            mouse_thread = MouseThread(mouse)
+
+            answer = input("Do you want to use the saved calibration data? [y/n]:")
             if answer == "y" or answer == "Y":
-                cs.save_calib(calib_coords)
+                calib_coords = cs.read_calib()
+            else:
+                # dr.show_calib_img()
+                calib_coords = calibrate(camera_pi)
+                answer = input("Save this calibration data? [y/n]:")
+                if answer == "y" or answer == "Y":
+                    cs.save_calib(calib_coords)
 
-        print("Calibration coordinates: {0}".format(calib_coords))
-        np_calib_points = np.float32([
-            [calib_coords[0][0], calib_coords[0][1]],
-            [calib_coords[1][0], calib_coords[1][1]],
-            [calib_coords[2][0], calib_coords[2][1]],
-            [calib_coords[3][0], calib_coords[3][1]]
-        ])
-        np_warped_points = np.float32([[dbr.CALIB_BORDER, dbr.CALIB_BORDER],
-                                       [WIDTH - dbr.CALIB_BORDER, dbr.CALIB_BORDER],
-                                       [WIDTH - dbr.CALIB_BORDER, HEIGHT - dbr.CALIB_BORDER],
-                                       [dbr.CALIB_BORDER, HEIGHT - dbr.CALIB_BORDER]])
-        # TODO: map 4 corners of the screen with the offset in mind
-        np_crop_points = np.int32(np_calib_points)
-        warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
-        print(warp_matrix)
+            print("Calibration coordinates: {0}".format(calib_coords))
+            np_calib_points = np.float32([
+                [calib_coords[0][0], calib_coords[0][1]],
+                [calib_coords[1][0], calib_coords[1][1]],
+                [calib_coords[2][0], calib_coords[2][1]],
+                [calib_coords[3][0], calib_coords[3][1]]
+            ])
+            np_warped_points = np.float32([[0, 0], [WIDTH, 0], [WIDTH, HEIGHT], [0, HEIGHT]])
+            np_crop_points = np.int32(np_calib_points)
+            warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
+            print(warp_matrix)
 
-        # actually start our threads now
-        process_output = ProcessOutput()
-        consumer = Consumer()
-        time_begin = time.time()
-        dr.show_clear()
+            # actually start our threads now
+            process_output = ProcessOutput()
+            consumer = Consumer()
+            time_begin = time.time()
+            dr.show_clear()
 
-
-        def signal_handler(signal, frame):
-            time_now = time.time()
-            fps = process_output.frames_processed / (time_now - time_begin)
-            dropped_percent = process_output.frames_dropped / (process_output.frames_dropped
-                                                               + process_output.frames_processed) * 100.0
-            detected_percent = process_output.frames_detected / process_output.frames_processed * 100.0
-            print("Average FPS thus far: {0}".format(fps))
-            print("Avg. % of frames dropped: {0}".format(dropped_percent))
-            print("Detected percent: {0}".format(detected_percent))
-
-
-        signal.signal(signal.SIGQUIT, signal_handler)
-
-        cam_thread = CameraThread(camera_pi, process_output)
-        dr.mainloop()
-
-        # TODO actual cleanup somehow
-        print("Quitting...")
+            cam_thread = CameraThread(camera_pi, process_output)
+            dr.mainloop()
+    except KeyboardInterrupt:
+        print('Terminating ...')
+        process_output.terminate()
+        consumer.terminate()
