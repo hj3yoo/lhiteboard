@@ -1,24 +1,18 @@
 import io
-import time
 import threading
 import picamera
 import cv2
 import numpy as np
-from itertools import combinations
-import sys
-from io import BytesIO
 import debug_render as dbr
 import calib_save as cs
 import signal
 import sys
 from mouse_emitter import *
 import time
+import json
+from PIL import Image
 
 import detect
-
-NUM_THREADS = 8
-WIDTH = 800
-HEIGHT = 600
 
 
 def to_normalized_screen_coords(raw_coord):
@@ -35,7 +29,7 @@ class Consumer(threading.Thread):
         self.start()
 
     def run(self):
-        print("Consumer running still")
+        #print("Consumer running still")
         while not self.terminated:
             with result_lock:
                 get = result_table.get(self.i)
@@ -50,7 +44,7 @@ class Consumer(threading.Thread):
                         #dr.push_point_mt(*get)
                         mouse_thread.queue.put(get)
                     self.i += 1
-        print('Consumer terminating')
+        #print('Consumer terminating')
 
     def terminate(self):
         self.terminated = True
@@ -66,7 +60,7 @@ class ImageProcessor(threading.Thread):
         self.start()
 
     def run(self):
-        print('ImageProcessor running - Thread #%d' % threading.get_ident())
+        #print('ImageProcessor running - Thread #%d' % threading.get_ident())
         # This method runs in a separate thread
         while not self.owner.done:
             # Wait for an image to be written to the stream
@@ -91,11 +85,14 @@ class ImageProcessor(threading.Thread):
                     cv2.fillConvexPoly(mask, np_crop_points, mask_color)
                     image_crop = cv2.bitwise_and(image, mask)
 
-                    sources, _ = detect.find_source(image_crop)
+                    sources, _ = detect.find_source(image_crop, blur_size=blur_mask_size,
+                                                    threshold=source_det_bright_thresh)
 
                     if len(sources) != 0:
                         (x0, y0), (x1, y1) = sources[0]
-                        coord, _ = detect.find_coordinate(image_crop[y0:y1, x0:x1])
+                        coord, _ = detect.find_coordinate(image_crop[y0:y1, x0:x1], blur_size=blur_mask_size,
+                                                          static_threshold=coord_det_bright_thresh,
+                                                          dynamic_threshold=coord_det_bright_percentile)
                         coord = (coord[0] + x0, coord[1] + y0)
                     else:
                         coord = (-1, -1)
@@ -122,7 +119,7 @@ class ImageProcessor(threading.Thread):
                     with self.owner.lock:
                         self.owner.pool.append(self)
                     time.sleep(0.01)
-        print('ImageProcessor terminating - Thread #%d' % threading.get_ident())
+        #print('ImageProcessor terminating - Thread #%d' % threading.get_ident())
 
 
 class ProcessOutput(object):
@@ -180,7 +177,7 @@ class ProcessOutput(object):
                 except IndexError:
                     pass  # pool is empty
             elapsed_ts = time.time() - start_ts
-        print('flush finished')
+        #print('flush finished')
         sys.exit(0)
 
 
@@ -200,37 +197,66 @@ class CameraThread(threading.Thread):
         self.camera.stop_recording()
 
 
-def calibrate(camera):
-    coords = []
+def calibrate(camera, max_dist_thresh=15):
+    dr = dbr.DebugRenderer()
+
+    corner_coords = []
     # Calibration - let the user grab 4 coordinates
     # U press keyboard to take pic
-    dirs = ["top left", "top right", "bottom right", "bottom left"]
-    for i in range(len(dirs)):
-        coord_found = False
-        while not coord_found:
-            print("Taking {0} calibration picture. Press keyboard when ready.".format(dirs[i]))
+    corners = ["top left", "top right", "bottom right", "bottom left"]
+    img_corner_name = ['TL.jpg', 'TR.jpg', 'BR.jpg', 'BL.jpg']
+    for i in range(len(corners)):
+        corner = corners[i]
+        pil_image = Image.open(img_corner_name[i])
+        dr.show_img(pil_image)
+        num_coord_found = 0
+        num_frame_idle = 0
+        coords = []
+        print('Please point your device towards %s corner of the screen' % corner)
+        while True:
             # camera.start_preview()
-            sys.stdin.readline()
-            stream = BytesIO()
+            #sys.stdin.readline()
+            stream = io.BytesIO()
             camera.capture(stream, format='jpeg')
             stream.seek(0)
-            image = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8),
-                                 cv2.IMREAD_COLOR)
-            sources, _ = detect.find_source(image)
-
+            image = cv2.imdecode(np.fromstring(stream.getvalue(), dtype=np.uint8), cv2.IMREAD_COLOR)
+            sources, _ = detect.find_source(image, blur_size=blur_mask_size, threshold=source_det_bright_thresh)
             if len(sources) != 0:
-                print(sources)
                 (x0, y0), (x1, y1) = sources[0]
                 coord, _ = detect.find_coordinate(image[y0:y1, x0:x1])
-                print(coord)
                 if coord != (-1, -1):
                     coord = (coord[0] + x0, coord[1] + y0)
-                    coord_found = True
-            else:
-                print('No points detected. Please try again.')
+                    coords.append(coord)
+                    #print('%s: %s' % (corner, coord))
+                    num_coord_found += 1
+                    num_frame_idle = 0
+                else:
+                    num_frame_idle += 1
+                    # If nothing has been detected for 20 frames, restart the calibration for this corner
+                    if num_frame_idle >= 20 and num_coord_found > 0:
+                        print('No input was detected. Please try again.')
+                        num_coord_found = 0
+                        coords = []
 
-        coords.append(coord)
-    return coords
+            # No more input source - check all of the detected coordinates are close to each other
+            # Repeat this corner if the coordinates are far apart from each other
+            elif (len(sources) == 0 or coord == (-1, -1)) and num_coord_found >= 5:
+                max_dist = calc_max_dist(coords)
+                if max_dist > max_dist_thresh:
+                    #print(coords)
+                    #print(max_dist)
+                    print("The detected coordinates were too far apart. Please try again.")
+                    num_coord_found = 0
+                    coords = []
+                else:
+                    # Good to go for next corner
+                    print("Successfully calibrated %s" % corner)
+                    break
+        average_coord = tuple([sum(a) / len(a) for a in zip(*coords)])
+        #print('%s average: %s' % (corner, average_coord))
+        corner_coords.append(average_coord)
+    dr.destroy()
+    return corner_coords
         # camera.stop_preview()
 
 
@@ -242,25 +268,51 @@ if __name__ == '__main__':
 
             # camera_pi.start_preview() #This outputs the video full-screen in real time
             #time.sleep(2)
+            with open('settings.json') as settings_file:
+                settings = json.load(settings_file)
+
+            NUM_THREADS = settings['NUM_THREAD']
 
             result_lock = threading.Lock()
             result_table = {}
 
             # Mouse emulator
-            mouse = Mouse(drop_tolerance=2, right_click_duration=30, right_click_dist=15)
+            mouse = Mouse(drop_tolerance=settings['DRAG_DROP_THRESH'], right_click_duration=settings['RC_NUM_FRAMES'],
+                          right_click_dist=settings['RC_DIST'])
             mouse_thread = MouseThread(mouse)
 
-            answer = input("Do you want to use the saved calibration data? [y/n]:")
-            if answer == "y" or answer == "Y":
-                calib_coords = cs.read_calib()
-            else:
-                # dr.show_calib_img()
-                calib_coords = calibrate(camera_pi)
-                answer = input("Save this calibration data? [y/n]:")
-                if answer == "y" or answer == "Y":
-                    cs.save_calib(calib_coords)
+            WIDTH, HEIGHT = mouse.screen_size()
+            blur_mask_size = settings['BLUR_SIZE']
+            source_det_bright_thresh = settings['SD_BRIGHT_THRESH']
+            coord_det_bright_thresh = settings['CD_BRIGHT_THRESH']
+            coord_det_bright_percentile = settings['CD_BRIGHT_PERCENT']
+            coord_det_weight = settings['CD_COORD_WEIGHT']
 
-            print("Calibration coordinates: {0}".format(calib_coords))
+
+            # Check if the camera was previously calibrated, and ask user if they want recalibration
+            is_calibrated = False
+            try:
+                calib_file = open(cs.CALIB_FILENAME)
+                answer = input('The camera has been previously calibrated. Would you like to recalibrate? [y/n]')
+                if answer.lower() == 'y':
+                    is_calibrated = False
+                else:
+                    calib_coords = cs.read_calib()
+                    is_calibrated = True
+            except FileNotFoundError:
+                is_calibrated = False
+
+            while not is_calibrated:
+                calib_coords = calibrate(camera_pi)
+                answer = input("Would you like to recalibrate? [y/n]:")
+                if answer.lower() == 'y':
+                    is_calibrated = False
+                else:
+                    cs.save_calib(calib_coords)
+                    is_calibrated = True
+
+
+            #print("Calibration coordinates: {0}".format(calib_coords))
             np_calib_points = np.float32([
                 [calib_coords[0][0], calib_coords[0][1]],
                 [calib_coords[1][0], calib_coords[1][1]],
@@ -270,12 +322,13 @@ if __name__ == '__main__':
             np_warped_points = np.float32([[0, 0], [WIDTH, 0], [WIDTH, HEIGHT], [0, HEIGHT]])
             np_crop_points = np.int32(np_calib_points)
             warp_matrix = cv2.getPerspectiveTransform(np_calib_points, np_warped_points)
-            print(warp_matrix)
+            #print(warp_matrix)
 
             # actually start our threads now
             process_output = ProcessOutput()
             consumer = Consumer()
             cam_thread = CameraThread(camera_pi, process_output)
+            print('Setting has been finished. You may minimize this terminal now.')
 
             while True:
                 time.sleep(0.001)

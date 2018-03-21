@@ -1,4 +1,5 @@
 from tkinter import *
+from PIL import Image, ImageTk
 import queue
 import _thread
 import time
@@ -12,9 +13,9 @@ CALIB_BORDER = 0
 
 
 class DebugRenderer():
-    def __init__(self):
+    def __init__(self, fullscreen=True):
         self.master = Tk()
-        # self.master.attributes("-fullscreen", True)
+        self.master.attributes("-fullscreen", fullscreen)
         self.w = self.master.winfo_screenwidth()
         self.h = self.master.winfo_screenheight()
         self.canvas = Canvas(self.master, width=self.w, height=self.h)
@@ -23,6 +24,12 @@ class DebugRenderer():
         self.queue = queue.Queue()
         #self.mouse = mouse_emitter.Mouse(drop_tolerance=2, right_click_duration=30, right_click_dist=15)
         #self.mouse_thread = mouse_emitter.MouseThread(self.mouse)
+
+    def show_img(self, pil_image):
+        self.show_clear()
+        image = ImageTk.PhotoImage(pil_image)
+        image_sprite = self.canvas.create_image(self.w / 2, self.h / 2, image=image)
+        self.master.update()
 
     def show_calib_img(self):
         radius = 100
@@ -96,6 +103,9 @@ class DebugRenderer():
 
     def normalized_cam_to_canvas(self, ncx, ncy):
         return (self.w * ncx, self.h * ncy)
+
+    def destroy(self):
+        self.master.destroy()
 
 
 if __name__ == "__main__":

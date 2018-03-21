@@ -5,6 +5,9 @@ from PyQt5.QtGui import *
 import picamera
 import cv2
 from main2 import *
+import json
+import os
+import subprocess
 
 OFFSET_BETWEEN_WIDGETS = 10
 
@@ -215,14 +218,14 @@ class MainApp(App):
         if dict_settings is not None:
             self.__dict_settings = dict_settings
         else:
-            self.__dict_settings = {'RC_NUM_FRAMES': 10,
-                                    'RC_DIST': 25,
-                                    'MAX_FPS': 20,
-                                    'MAX_THREAD': 6,
+            self.__dict_settings = {'RC_NUM_FRAMES': 20,
+                                    'RC_DIST': 15,
+                                    #'MAX_FPS': 20,
+                                    'NUM_THREAD': 8,
                                     'BLUR_SIZE': 5,
-                                    'SD_BRIGHT_THRESHOLD': 40,
-                                    'CD_BRIGHT_THRESHOLD': 30,
-                                    'CD_BRIGHT_PERCENTILE': 50,
+                                    'SD_BRIGHT_THRESH': 40,
+                                    'CD_BRIGHT_THRESH': 30,
+                                    'CD_BRIGHT_PERCENT': 50,
                                     'CD_COORD_WEIGHT': 0.5,
                                     }
 
@@ -236,7 +239,7 @@ class MainApp(App):
         # Initialize picamera
         self.__camera = picamera.PiCamera(sensor_mode=5)
         self.__camera.color_effects = (128, 128)  # Grayscale
-    
+
     def show_settings(self):
         dialog_setting = SettingsApp('Settings', self.__dict_settings, parent=self)
         ret = dialog_setting.exec()
@@ -251,7 +254,7 @@ class MainApp(App):
         # TODO: integrate calibration implementation
         offset = self.__calib_offset
         max_dist = self.__dict_settings['RC_DIST']
-        calib_coords = calibrate(self.__camera, max_dist=max_dist, offset=offset)
+        calib_coords = calibrate(self.__camera)
         if calib_coords is not None:
             # Calculate transformation matrix to convert from calibration coordinates to screen coordinates
             np_calib_coords = np.float32([
@@ -273,18 +276,21 @@ class MainApp(App):
             self.popup('Calibration failed. Please try again.')
 
 
-    def activate(self):      
-        if self.__warp_matrix is None:
-            yn = self.popup('The camera hasn\'t been calibrated yet. Would you like to calibrate now?', yn=True)
-            if yn == QDialog.Accepted:
-                self.calibrate()
-            else:
-                return
+    def activate(self):
+        #if self.__warp_matrix is None:
+        #    yn = self.popup('The camera hasn\'t been calibrated yet. Would you like to calibrate now?', yn=True)
+        #    if yn == QDialog.Accepted:
+        #        self.calibrate()
+        #    else:
+        #        return
         # TODO: integrate processing framework
-        process_output = ProcessOutput()
-        consumer = Consumer()
-        dr.show_clear() 
-        cam_thread = CameraThread(self.__camera_pi, process_output)
+        #os.system('python3 main2.py')
+        subprocess.call(['python3', 'main2.py'])
+        self.done(QDialog.Accepted)
+        sys.exit()
+        #process_output = ProcessOutput()
+        #consumer = Consumer()
+        #cam_thread = CameraThread(self.__camera_pi, process_output)
         pass
 
 
@@ -295,36 +301,36 @@ class SettingsApp(App):
         self.dict_settings = dict_settings
         # Parameters for right click register
         self.add_input_field(name='RC_NUM_FRAMES', label='Duration of frames for right click',
-                             pos=QPoint(20, 20), valid_range=(3, 20), 
+                             pos=QPoint(20, 20), valid_range=(3, 20),
                              contents=str(self.dict_settings['RC_NUM_FRAMES']),
                              tooltip='Holding the pointer for this many frames will register as right click')
-        self.add_input_field(name='RC_RADIUS', label='Radius in pixels for right click',
-                             pos=QPoint(20, 50), valid_range=(5, 50), contents=str(self.dict_settings['RC_RADIUS']),
+        self.add_input_field(name='RC_DIST', label='Maximum distance in pixels for right click',
+                             pos=QPoint(20, 50), valid_range=(5, 50), contents=str(self.dict_settings['RC_DIST']),
                              tooltip='Holding the pointer within this radius will register as right click')
         # Parameters for performance restriction
-        self.add_input_field(name='MAX_FPS', label='Maximum fps to process', pos=QPoint(20, 100),
-                             valid_range=(15, 30), contents=str(self.dict_settings['MAX_FPS']),
-                             tooltip='Lower fps may result in less responsive behaviour, '
-                                     'but will limit required processing power')
-        self.add_input_field(name='MAX_THREAD', label='Number of concurrent threads', pos=QPoint(20, 130),
-                             valid_range=(1, 12), contents=str(self.dict_settings['MAX_THREAD']),
+        #self.add_input_field(name='MAX_FPS', label='Maximum fps to process', pos=QPoint(20, 100),
+        #                     valid_range=(15, 30), contents=str(self.dict_settings['MAX_FPS']),
+        #                     tooltip='Lower fps may result in less responsive behaviour, '
+        #                             'but will limit required processing power')
+        self.add_input_field(name='NUM_THREAD', label='Number of concurrent threads', pos=QPoint(20, 130),
+                             valid_range=(1, 12), contents=str(self.dict_settings['NUM_THREAD']),
                              tooltip='Less threads may result in less responsive behaviour, '
                                      'but will limit required processing power')
         # Parameters for core detection algorithm
         self.add_input_field(name='BLUR_SIZE', label='Mask size of Gaussian blur', pos=QPoint(20, 180),
                              valid_range=(3, 11), contents=str(self.dict_settings['BLUR_SIZE']))
-        self.add_input_field(name='SD_BRIGHT_THRESHOLD',
+        self.add_input_field(name='SD_BRIGHT_THRESH',
                              label='Brightness threshold for source detection',
                              pos=QPoint(20, 210), valid_range=(20, 60),
-                             contents=str(self.dict_settings['SD_BRIGHT_THRESHOLD']))
-        self.add_input_field(name='CD_BRIGHT_THRESHOLD',
+                             contents=str(self.dict_settings['SD_BRIGHT_THRESH']))
+        self.add_input_field(name='CD_BRIGHT_THRESH',
                              label='Brightness threshold for coordinate detection',
                              pos=QPoint(20, 240), valid_range=(20, 60),
-                             contents=str(self.dict_settings['CD_BRIGHT_THRESHOLD']))
-        self.add_input_field(name='CD_BRIGHT_PERCENTILE',
+                             contents=str(self.dict_settings['CD_BRIGHT_THRESH']))
+        self.add_input_field(name='CD_BRIGHT_PERCENT',
                              label='Brightness percentile for coordinate detection',
                              pos=QPoint(20, 270), valid_range=(20, 100),
-                             contents=str(self.dict_settings['CD_BRIGHT_PERCENTILE']))
+                             contents=str(self.dict_settings['CD_BRIGHT_PERCENT']))
         self.add_input_field(name='CD_COORD_WEIGHT',
                              label='Weight of brightest point to compute projection coordinate',
                              pos=QPoint(20, 300), valid_range=(0.0, 1.0), decimal=2,
@@ -348,11 +354,14 @@ class SettingsApp(App):
                            '\nPlease check the values again.',
                            yn=False)
                 return
+        # Save the settings on json file
+        with open('settings.json', 'w') as json_file:
+            json_file.write(json.dumps(self.dict_settings))
         self.done(QDialog.Accepted)
 
     def cancel_on_exit(self):
         self.done(QDialog.Rejected)
-        
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
